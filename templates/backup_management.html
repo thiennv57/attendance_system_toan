@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Quản Lý Backup{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="mb-4">
+                <i class="fas fa-database"></i> Quản Lý Backup Cơ Sở Dữ Liệu
+            </h2>
+
+            <!-- Alert thông báo -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'danger' else 'warning' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <!-- Control Panel -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cogs"></i> Điều Khiển Backup
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="text-muted mb-3">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Thông Tin:</strong>
+                            </p>
+                            <ul class="list-unstyled">
+                                <li>
+                                    <i class="fas fa-calendar"></i> 
+                                    <strong>Backup Tự Động:</strong> Mỗi Thứ Hai 00:00
+                                </li>
+                                <li>
+                                    <i class="fas fa-files"></i> 
+                                    <strong>Tối Đa Backup:</strong> 10 file
+                                </li>
+                                <li>
+                                    <i class="fas fa-folder"></i> 
+                                    <strong>Thư Mục:</strong> <code>backups/</code>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <form method="POST" action="{{ url_for('trigger_backup') }}" style="display: inline;">
+                                <button type="submit" class="btn btn-success w-100 mb-2">
+                                    <i class="fas fa-play"></i> Backup Ngay Bây Giờ (Thủ Công)
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backup Files List -->
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list"></i> Danh Sách Backup
+                        <span class="badge bg-light text-dark float-end">{{ backups|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if backups %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tên File</th>
+                                        <th>Loại DB</th>
+                                        <th>Kích Thước</th>
+                                        <th>Ngày Tạo</th>
+                                        <th>Hành Động</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for backup in backups %}
+                                        <tr>
+                                            <td>
+                                                <code>{{ backup.filename }}</code>
+                                            </td>
+                                            <td>
+                                                {% if 'students' in backup.filename %}
+                                                    <span class="badge bg-primary">Students DB</span>
+                                                {% elif 'attendance' in backup.filename %}
+                                                    <span class="badge bg-success">Attendance DB</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Unknown</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {{ "%.2f"|format(backup.size_kb) }} KB
+                                            </td>
+                                            <td>
+                                                {{ backup.created_at.strftime('%d/%m/%Y %H:%M:%S') }}
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <!-- Download Button -->
+                                                    <a href="{{ url_for('download_backup', filename=backup.filename) }}" 
+                                                       class="btn btn-outline-primary" 
+                                                       title="Tải về">
+                                                        <i class="fas fa-download"></i>
+                                                    </a>
+                                                    
+                                                    <!-- Restore Button -->
+                                                    <button type="button" 
+                                                            class="btn btn-outline-warning" 
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#restoreModal"
+                                                            onclick="setRestoreFile('{{ backup.filename }}')"
+                                                            title="Khôi Phục">
+                                                        <i class="fas fa-undo"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info" role="alert">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Chưa có backup nào!</strong> Nhấn "Backup Ngay Bây Giờ" để tạo backup đầu tiên.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle"></i> Xác Nhận Khôi Phục
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-3">
+                    <strong>⚠️ Cảnh Báo!</strong><br>
+                    Khôi phục sẽ <strong>ghi đè lên dữ liệu hiện tại</strong>!<br>
+                    Bản dữ liệu hiện tại sẽ được sao lưu trước.
+                </div>
+                <p>
+                    <strong>File sẽ khôi phục:</strong><br>
+                    <code id="restoreFileName"></code>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                <form method="POST" action="{{ url_for('restore_backup_route') }}" style="display: inline;">
+                    <input type="hidden" name="backup_filename" id="backupFilenameInput" value="">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-undo"></i> Khôi Phục Ngay
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function setRestoreFile(filename) {
+        document.getElementById('restoreFileName').textContent = filename;
+        document.getElementById('backupFilenameInput').value = filename;
+    }
+</script>
+
+<style>
+    code {
+        background-color: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="student-comments-container mt-4">
+    <h2 class="mb-4">Quản lý nhận xét - {{ student.name }} ({{ student.grade }})</h2>
+    
+    <a href="{{ url_for('comment_management') }}" class="btn btn-secondary mb-3">Quay lại danh sách</a>
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Tổng quan học sinh</h5>
+            <p><strong>Tên:</strong> {{ student.name }}</p>
+            <p><strong>Khối lớp:</strong> {{ student.grade }}</p>
+            <p><strong>Mã học sinh Excel:</strong> {{ student.excel_student_id or 'Chưa có' }}</p>
+        </div>
+    </div>
+    
+    <h3 class="mb-3">Danh sách nhận xét theo từng buổi học</h3>
+    
+    {% if all_attendances %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Ngày</th>
+                    <th>Ca học</th>
+                    <th>Nhận xét</th>
+                    <th>Người cập nhật</th>
+                    <th>Thời gian cập nhật</th>
+                    <th>Hành động</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for attendance in all_attendances %}
+                <tr>
+                    <td>{{ attendance.date.strftime('%d-%m-%Y') }}</td>
+                    <td>{{ attendance.time_slot }}</td>
+                    <td>
+                        {% if attendance.comment %}
+                            {{ attendance.comment[:100] }}{% if attendance.comment|length > 100 %}...{% endif %}
+                        {% else %}
+                            <span class="text-muted">Chưa có nhận xét</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ attendance.update_by_user.username if attendance.update_by_user else attendance.created_by_user.username }}</td>
+                    <td>{{ attendance.updated_at.strftime('%d-%m-%Y %H:%M') if attendance.updated_at else attendance.created_at.strftime('%d-%m-%Y %H:%M') }}</td>
+                    <td>
+                        <button type="button" class="btn btn-warning btn-sm edit-comment-btn" 
+                                data-attendance-id="{{ attendance.id }}" 
+                                data-date="{{ attendance.date.strftime('%d-%m-%Y') }}" 
+                                data-time-slot="{{ attendance.time_slot }}" 
+                                data-current-comment="{{ attendance.comment | e }}">
+                            Sửa
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="alert alert-info">Không tìm thấy bản ghi điểm danh nào cho học sinh này.</p>
+    {% endif %}
+</div>
+
+<!-- Edit Comment Modal -->
+<div class="modal fade" id="editCommentModal" tabindex="-1" aria-labelledby="editCommentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editCommentModalLabel">Sửa nhận xét</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editCommentForm" method="POST" action="{{ url_for('update_attendance_comment') }}">
+                    <input type="hidden" name="attendance_id" id="editAttendanceId">
+                    <input type="hidden" name="student_id" value="{{ student.id }}">
+                    <div class="mb-3">
+                        <label for="commentDate" class="form-label">Ngày</label>
+                        <input type="text" class="form-control" id="commentDate" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="commentTimeSlot" class="form-label">Ca học</label>
+                        <input type="text" class="form-control" id="commentTimeSlot" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="commentContent" class="form-label">Nhận xét</label>
+                        <textarea class="form-control" id="commentContent" name="comment" rows="5"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="saveCommentBtn">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        // JavaScript to handle opening the modal and populating data
+        $('.edit-comment-btn').on('click', function() {
+            var attendanceId = $(this).data('attendance-id');
+            var date = $(this).data('date');
+            var timeSlot = $(this).data('time-slot');
+            var comment = $(this).data('current-comment');
+
+            $('#editAttendanceId').val(attendanceId);
+            $('#commentDate').val(date);
+            $('#commentTimeSlot').val(timeSlot);
+            $('#commentContent').val(comment);
+
+            var editCommentModal = new bootstrap.Modal(document.getElementById('editCommentModal'));
+            editCommentModal.show();
+        });
+
+        // Submit the form when save button is clicked
+        $('#saveCommentBtn').on('click', function() {
+            $('#editCommentForm').submit();
+        });
+    });
+</script>
+{% endblock %}

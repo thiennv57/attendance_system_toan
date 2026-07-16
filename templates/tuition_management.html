@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Quản lý Học phí{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Quản lý Học phí</h1>
+
+    <div class="tuition-summary">
+        <p><strong>Tổng số tiền đã thu:</strong> {{ "{:,.0f}".format(total_collected_amount) }} VNĐ</p>
+        <p><strong>Tổng số tiền chưa thu:</strong> {{ "{:,.0f}".format(total_uncollected_amount) }} VNĐ</p>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Bộ lọc Học phí</h6>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('tuition_management') }}" method="GET" class="d-flex flex-wrap align-items-center">
+                <div class="form-group me-3 mb-2">
+                    <label for="month" class="me-2">Tháng:</label>
+                    <select name="month" id="month" class="form-control form-control-sm">
+                        {% for m in available_months %}
+                            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group me-3 mb-2">
+                    <label for="year" class="me-2">Năm:</label>
+                    <select name="year" id="year" class="form-control form-control-sm">
+                        {% for y in available_years %}
+                            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group me-3 mb-2">
+                    <label for="grade_filter" class="me-2">Khối lớp:</label>
+                    <select name="grade_filter" id="grade_filter" class="form-control form-control-sm">
+                        <option value="all" {% if grade_filter == 'all' %}selected{% endif %}>Tất cả</option>
+                        {% for grade in available_grades %}
+                            <option value="{{ grade }}" {% if grade == grade_filter %}selected{% endif %}>{{ grade }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group me-3 mb-2">
+                    <label for="payment_status" class="me-2">Trạng thái:</label>
+                    <select name="payment_status" id="payment_status" class="form-control form-control-sm">
+                        <option value="all" {% if payment_status == 'all' %}selected{% endif %}>Tất cả</option>
+                        <option value="paid" {% if payment_status == 'paid' %}selected{% endif %}>Đã đóng</option>
+                        <option value="unpaid" {% if payment_status == 'unpaid' %}selected{% endif %}>Chưa đóng</option>
+                    </select>
+                </div>
+                <div class="form-group me-3">
+                    <label for="search_query" class="me-2">Tìm kiếm tên:</label>
+                    <input type="text" name="search_query" id="search_query" class="form-control form-control-sm" value="{{ search_query }}" placeholder="Tên học sinh">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm mb-2">Lọc</button>
+
+            </form>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="form-group mb-0">
+            <label for="per_page_select" class="me-2">Số bản ghi mỗi trang:</label>
+            <select name="per_page_select" id="per_page_select" class="form-control form-control-sm" onchange="window.location.href = '{{ url_for('tuition_management', page=1, search_query=search_query, month=month, year=year, grade_filter=grade_filter, payment_status=payment_status) }}&per_page=' + this.value;">
+                {% for num in [10, 25, 50, 100] %}
+                    <option value="{{ num }}" {% if num == per_page %}selected{% endif %}>{{ num }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+
+
+    <!-- Tuition Data Table -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Danh sách Học phí</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <p>Tổng số bản ghi: <strong>{{ record_count }}</strong></p>
+                <form action="{{ url_for('bulk_update_tuition_status') }}" method="POST">
+                    <input type="hidden" name="return_to" value="{{ current_url }}">
+                    <div class="table-responsive">
+                        <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>ID Học sinh</th>
+                                    <th>Tên Học sinh</th>
+                                    <th>Khối học</th>
+                                    <th>SĐT Bố</th>
+                                    <th>SĐT Mẹ</th>
+                                    <th>Số tiền phải đóng</th>
+                                    <th>Trạng thái</th>
+                                    <th>Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tuition in tuition_data %}
+                                <tr>
+                                    <td>{{ tuition.student_id }}</td>
+                                    <td>{{ tuition.student_name }}</td>
+                                    <td>{{ tuition.grade }}</td>
+                                    <td><a href="https://zalo.me/{{ tuition.father_phone }}" target="_blank">{{ tuition.father_phone if tuition.father_phone else 'N/A' }}</a></td>
+                                    <td><a href="https://zalo.me/{{ tuition.mother_phone }}" target="_blank">{{ tuition.mother_phone if tuition.mother_phone else 'N/A' }}</a></td>
+                                    <td>{{ "{:,.0f}".format(tuition.amount_due) }}</td>
+                                    <td>
+                                        <input type="hidden" name="tuition_ids" value="{{ tuition.tuition_id }}">
+                                        <input type="checkbox" name="is_paid_{{ tuition.tuition_id }}" class="tuition-checkbox" {% if tuition.is_paid %}checked{% endif %}>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-info btn-sm edit-tuition-btn"
+                                                data-tuition-id="{{ tuition.tuition_id }}"
+                                                data-student-name="{{ tuition.student_name }}"
+                                                data-current-fee="{{ tuition.custom_fee if tuition.custom_fee is not none else tuition.amount_due }}"
+                                                data-month="{{ month }}"
+                                                data-year="{{ year }}"
+                                                data-search-query="{{ search_query }}"
+                                                data-return-to="{{ current_url }}">
+                                            Sửa
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button type="submit" class="btn btn-primary btn-sm">Cập nhật</button>
+                    </div>
+                </form>
+</div>
+
+<!-- Edit Custom Fee Modal -->
+<div class="modal fade" id="editCustomFeeModal" tabindex="-1" role="dialog" aria-labelledby="editCustomFeeModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editCustomFeeModalLabel">Chỉnh sửa Học phí tùy chỉnh</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('update_tuition_fee') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="tuition_id" id="modal_tuition_id">
+                    <input type="hidden" name="month" id="modal_month">
+                    <input type="hidden" name="year" id="modal_year">
+                    <input type="hidden" name="search_query" id="modal_search_query">
+                    <input type="hidden" name="return_to" id="modal_return_to">
+                    <div class="form-group mb-3">
+                        <label for="modal_student_name" class="form-label">Học sinh:</label>
+                        <input type="text" class="form-control" id="modal_student_name" readonly>
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="custom_fee" class="form-label">Mức học phí tùy chỉnh (để trống để dùng mặc định):</label>
+                        <input type="number" class="form-control" id="custom_fee" name="custom_fee" step="1000">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var editCustomFeeModalElement = document.getElementById('editCustomFeeModal');
+        var editCustomFeeModal = new bootstrap.Modal(editCustomFeeModalElement);
+
+        document.querySelectorAll('.edit-tuition-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                console.log('Edit tuition button clicked'); // Add this line
+                var tuitionId = this.getAttribute('data-tuition-id');
+                var studentName = this.getAttribute('data-student-name');
+                var currentFee = this.getAttribute('data-current-fee');
+                var month = this.getAttribute('data-month');
+                var year = this.getAttribute('data-year');
+                var searchQuery = this.getAttribute('data-search-query');
+                var returnTo = this.getAttribute('data-return-to');
+
+                editCustomFeeModalElement.querySelector('#modal_tuition_id').value = tuitionId;
+                editCustomFeeModalElement.querySelector('#modal_student_name').value = studentName;
+                editCustomFeeModalElement.querySelector('#custom_fee').value = (currentFee === 'Mặc định' || currentFee === '0') ? '' : currentFee;
+                editCustomFeeModalElement.querySelector('#modal_month').value = month;
+                editCustomFeeModalElement.querySelector('#modal_year').value = year;
+                editCustomFeeModalElement.querySelector('#modal_search_query').value = searchQuery;
+                editCustomFeeModalElement.querySelector('#modal_return_to').value = returnTo;
+                editCustomFeeModalElement.querySelector('.modal-title').textContent = 'Chỉnh sửa Học phí tùy chỉnh cho ' + studentName;
+
+                editCustomFeeModal.show();
+                console.log('Modal show function called'); // Add this line
+            });
+        });
+
+        // Auto-close modal if a success flash message is present
+        {% if get_flashed_messages(category_filter=['success']) %}
+            var myModalEl = document.getElementById('editCustomFeeModal');
+            var modal = bootstrap.Modal.getInstance(myModalEl);
+            if (modal) {
+                modal.hide();
+            }
+        {% endif %}
+    });
+</script>
+
+<nav aria-label="Page navigation" class="mt-3">
+        <ul class="pagination justify-content-center">
+            {% if pagination.has_prev %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('tuition_management', page=pagination.prev_num, search_query=search_query, month=month, year=year, grade_filter=grade_filter, payment_status=payment_status, per_page=per_page) }}">Trước</a></li>
+            {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">Trước</a></li>
+            {% endif %}
+            {% for p in pagination.iter_pages() %}
+            {% if p %}
+            {% if p == pagination.page %}
+            <li class="page-item active"><a class="page-link" href="#">{{ p }}</a></li>
+            {% else %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('tuition_management', page=p, search_query=search_query, month=month, year=year, grade_filter=grade_filter, payment_status=payment_status, per_page=per_page) }}">{{ p }}</a></li>
+            {% endif %}
+            {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">&hellip;</a></li>
+            {% endif %}
+            {% endfor %}
+            {% if pagination.has_next %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('tuition_management', page=pagination.next_num, search_query=search_query, month=month, year=year, grade_filter=grade_filter, payment_status=payment_status, per_page=per_page) }}">Tiếp</a></li>
+            {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">Tiếp</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+
+
+{% endblock %}

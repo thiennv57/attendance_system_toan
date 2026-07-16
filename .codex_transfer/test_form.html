@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 760px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Tao bai kiem tra</h2>
+        <a href="{{ url_for('test_management') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-1"></i>Quay lai</a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="title" class="form-label">Ten bai kiem tra</label>
+                    <input type="text" id="title" name="title" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label for="grade" class="form-label">Khoi lop</label>
+                    <select id="grade" name="grade" class="form-select" required>
+                        <option value="">Chon khoi lop</option>
+                        {% for grade in available_grades %}
+                        <option value="{{ grade }}">{{ grade }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Khi tao, toan bo hoc sinh cua khoi nay se duoc them san vao 10 lan kiem tra dau tien.</div>
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Ghi chu</label>
+                    <textarea id="description" name="description" rows="4" class="form-control"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-circle-plus me-1"></i>Tao bai kiem tra</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

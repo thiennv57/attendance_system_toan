@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-4 text-center">
+        <h2 class="mb-4">Registration is not available.</h2>
+        <p class="lead">Please use the <a href="{{ url_for('student_lookup') }}">Student Lookup</a> page.</p>
+        <a href="{{ url_for('student_lookup') }}" class="btn btn-primary mt-3">Go to Student Lookup</a>
+    </div>
+</div>
+{% endblock %}

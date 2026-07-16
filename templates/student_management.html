@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Quản lý học sinh</h2>
+
+    <div class="card mb-4">
+        <div class="card-header">Thêm học sinh mới (Nhanh)</div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('add_quick_student') }}" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label for="name" class="form-label">Tên học sinh:</label>
+                    <input type="text" id="name" name="name" class="form-control" required>
+                </div>
+                <div class="col-md-5">
+                    <label for="excel_student_id" class="form-label">ID học sinh Excel:</label>
+                    <input type="text" id="excel_student_id" name="excel_student_id" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Thêm học sinh</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            Nhập dữ liệu học sinh từ Excel
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('import_excel') }}" method="post" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="file" class="form-label">Chọn tệp Excel (.xlsx, .xls):</label>
+                    <input type="file" class="form-control" id="file" name="file" accept=".xlsx, .xls">
+                </div>
+                <button type="submit" class="btn btn-success mt-3">Nhập dữ liệu</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <a href="{{ url_for('students') }}" class="btn btn-secondary">Back to Student List</a>
+        <a href="{{ url_for('add_student') }}" class="btn btn-info ms-2">Add Detailed Student</a>
+        <a href="{{ url_for('export_student_csv') }}" class="btn btn-success ms-2">Xuất ra CSV</a>
+    </div>
+</div>
+{% endblock %}

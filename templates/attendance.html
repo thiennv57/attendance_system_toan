@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="attendance-container">
+    <h2>Điểm danh</h2>
+
+    <div class="filter-section mb-4">
+        <form method="GET" action="{{ url_for('take_attendance') }}" class="filter-form row g-3 align-items-end">
+            <div class="col-md-4">
+                <label for="date" class="form-label">Ngày:</label>
+                <input type="date" id="date" name="date" value="{{ date }}" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label for="slot" class="form-label">Ca học:</label>
+                <select id="slot" name="slot" class="form-select">
+                    <option value="">Chọn ca học</option>
+                    <option value="Ca 1: 18h -19h30" {% if selected_slot == 'Ca 1: 18h -19h30' %}selected{% endif %}>Ca 1: 18h -19h30</option>
+                    <option value="Ca 2: 19h30 - 21h" {% if selected_slot == 'Ca 2: 19h30 - 21h' %}selected{% endif %}>Ca 2: 19h30 - 21h</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="recorded_by_filter" class="form-label">Người điểm danh:</label>
+                <select id="recorded_by_filter" name="recorded_by_filter" class="form-select">
+                    <option value="">Tất cả</option>
+                    {% for user in available_users %}
+                    <option value="{{ user.id }}" {% if recorded_by_filter and recorded_by_filter|string == user.id|string %}selected{% endif %}>{{ user.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100">Tải danh sách học sinh</button>
+            </div>
+        </form>
+    </div>
+
+    {% if students or search_results %}
+    <form method="POST" action="{{ url_for('take_attendance') }}" class="attendance-form mb-4">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="time_slot" value="{{ selected_slot }}">
+
+        <h3 class="mb-3">Học sinh cho ngày {{ date }} - {{ selected_slot }}</h3>
+        <div class="attendance-stats mb-3">
+            <p><strong>Số lượng học sinh: {{ total_students_displayed }}</strong></p>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped data-table">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Tên</th>
+                        <th>Khối lớp</th>
+                        <th>Trạng thái</th>
+                        <th>Người điểm danh</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ student.name }}</td>
+                        <td>{{ student.grade }}</td>
+                        <td>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="attendance_{{ student.id }}" value="present" id="attendance_{{ student.id }}" {% if existing_attendance.get(student.id) and existing_attendance.get(student.id).status == 'present' %}checked{% endif %}>
+                                <label class="form-check-label" for="attendance_{{ student.id }}">Có mặt</label>
+                            </div>
+                        </td>
+                        <td>{{ existing_attendance.get(student.id).recorded_by if existing_attendance.get(student.id) else '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if not recorded_by_filter %}
+        <button type="submit" class="btn btn-success">Lưu điểm danh</button>
+        {% endif %}
+    </form>
+    {% else %}
+    <p class="alert alert-info">Chọn ngày và ca học để tải danh sách học sinh, hoặc tìm kiếm học sinh không có lịch.</p>
+    {% endif %}
+
+    <div class="search-unscheduled-section mt-5">
+        <h3 class="mb-3">Thêm học sinh không có lịch</h3>
+        <form method="GET" action="{{ url_for('take_attendance') }}" class="search-form row g-3 align-items-end">
+            <input type="hidden" name="date" value="{{ date }}">
+            <input type="hidden" name="slot" value="{{ selected_slot }}">
+            <div class="col-md-8">
+                <label for="search_query" class="form-label">Tìm kiếm học sinh (Tên hoặc Mã số):</label>
+                <input type="text" id="search_query" name="search_query" placeholder="Nhập tên hoặc mã số học sinh" value="{{ search_query if search_query else '' }}" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-secondary w-100">Tìm kiếm</button>
+            </div>
+        </form>
+        {% if search_results %}
+        <h4 class="mt-4 mb-3">Kết quả tìm kiếm:</h4>
+        <div class="table-responsive">
+            <table class="table table-striped data-table">
+                <thead>
+                    <tr>
+                        <th>Tên</th>
+                        <th>Khối lớp</th>
+                        <th>Hành động</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in search_results %}
+                    <tr>
+                        <td>{{ student.name }}</td>
+                        <td>{{ student.grade }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('add_unscheduled_student_to_attendance') }}" style="display:inline;">
+                                <input type="hidden" name="date" value="{{ date }}">
+                                <input type="hidden" name="time_slot" value="{{ selected_slot }}">
+                                <input type="hidden" name="student_id_to_add" value="{{ student.id }}">
+                                <button type="submit" class="btn btn-sm btn-primary">Thêm</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

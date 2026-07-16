@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="mb-0">{% if student %}Sửa thông tin học sinh{% else %}Thêm học sinh mới{% endif %}</h2>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <h3 class="mt-3 mb-3">Thông tin học sinh</h3>
+                <div class="mb-3">
+                    <label for="name" class="form-label">Họ và tên: <span class="text-danger">*</span></label>
+                    <input type="text" id="name" name="name" class="form-control" value="{{ student.name if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %} required>
+                </div>
+                {% set grade_options = ['Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9', 'Lớp 10', 'Lớp 11', 'Lớp 12'] %}
+                {% set selected_grade = student.grade if student else '' %}
+                <div class="mb-3">
+                    <label for="grade" class="form-label">Khối lớp: <span class="text-danger">*</span></label>
+                    <select id="grade" name="grade" class="form-select" {% if current_user_role == 'giaovien' %}disabled{% endif %} required>
+                        <option value="">Chọn khối lớp</option>
+                        {% if selected_grade and selected_grade not in grade_options %}
+                        <option value="{{ selected_grade }}" selected>{{ selected_grade }}</option>
+                        {% endif %}
+                        {% for grade_option in grade_options %}
+                        <option value="{{ grade_option }}" {% if selected_grade == grade_option %}selected{% endif %}>Khối {{ grade_option.split(' ')[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="school" class="form-label">Trường học: <span class="text-danger">*</span></label>
+                    <input type="text" id="school" name="school" class="form-control" value="{{ student.school if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %} required>
+                </div>
+
+                {% if current_user_role != 'giaovien' %}
+                <h3 class="mt-4 mb-3">Thông tin Phụ huynh (Cha)</h3>
+                <div class="mb-3">
+                    <label for="father_name" class="form-label">Tên Cha:</label>
+                    <input type="text" id="father_name" name="father_name" class="form-control" value="{{ student.father_name if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                <div class="mb-3">
+                    <label for="father_phone" class="form-label">SĐT/Zalo Cha:</label>
+                    <input type="text" id="father_phone" name="father_phone" class="form-control" value="{{ student.father_phone if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                <div class="mb-3">
+                    <label for="father_occupation" class="form-label">Nghề nghiệp Cha:</label>
+                    <input type="text" id="father_occupation" name="father_occupation" class="form-control" value="{{ student.father_occupation if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                {% endif %}
+
+                {% if current_user_role != 'giaovien' %}
+                <h3 class="mt-4 mb-3">Thông tin Phụ huynh (Mẹ)</h3>
+                <div class="mb-3">
+                    <label for="mother_name" class="form-label">Tên Mẹ:</label>
+                    <input type="text" id="mother_name" name="mother_name" class="form-control" value="{{ student.mother_name if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                <div class="mb-3">
+                    <label for="mother_phone" class="form-label">SĐT/Zalo Mẹ:</label>
+                    <input type="text" id="mother_phone" name="mother_phone" class="form-control" value="{{ student.mother_phone if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                <div class="mb-3">
+                    <label for="mother_occupation" class="form-label">Nghề nghiệp Mẹ:</label>
+                    <input type="text" id="mother_occupation" name="mother_occupation" class="form-control" value="{{ student.mother_occupation if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                {% endif %}
+
+                {% if current_user_role != 'giaovien' %}
+                <h3 class="mt-4 mb-3">Địa chỉ</h3>
+                <div class="mb-3">
+                    <label for="address" class="form-label">Địa chỉ:</label>
+                    <input type="text" id="address" name="address" class="form-control" value="{{ student.address if student else '' }}" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                </div>
+                {% endif %}
+
+                <h3 class="mt-4 mb-3">Thông tin bổ sung</h3>
+                {% if current_user_role != 'giaovien' %}
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Ghi chú:</label>
+                    <textarea id="notes" name="notes" class="form-control" rows="3" {% if current_user_role == 'giaovien' %}disabled{% endif %}>{{ student.notes if student else '' }}</textarea>
+                </div>
+                {% endif %}
+                <div class="mb-3">
+                    <label for="comment" class="form-label">Nhận xét:</label>
+                    <textarea id="comment" name="comment" class="form-control" rows="3">{{ student.comment if student else '' }}</textarea>
+                </div>
+
+                {% if current_user_role != 'giaovien' %}
+                <h3 class="mt-4 mb-3">Thông tin Lịch học</h3>
+                <p>Chọn ca học cho mỗi ngày trong tuần:</p>
+                {% set days_of_week = {2: 'Thứ Hai', 3: 'Thứ Ba', 4: 'Thứ Tư', 5: 'Thứ Năm', 6: 'Thứ Sáu', 7: 'Thứ Bảy'} %}
+                {% set time_slots = [
+                    {'value': 'Ca 1: 18h -19h30', 'label': 'Ca 1: 18h -19h30'},
+                    {'value': 'Ca 2: 19h30 - 21h', 'label': 'Ca 2: 19h30 - 21h'},
+                    {'value': '__double_slot__', 'label': 'Cả 2 ca'}
+                ] %}
+
+                {% for day_num, day_name in days_of_week.items() %}
+                {% set day_schedules = student.schedules | selectattr('day_of_week', 'equalto', day_num) | list if student and student.schedules else [] %}
+                {% set day_slots = day_schedules | map(attribute='time_slot') | list %}
+                {% set has_slot_1 = 'Ca 1: 18h -19h30' in day_slots %}
+                {% set has_slot_2 = 'Ca 2: 19h30 - 21h' in day_slots %}
+                {% set selected_schedule_value = '__double_slot__' if has_slot_1 and has_slot_2 else (day_slots[0] if day_slots else '') %}
+                <div class="mb-3">
+                    <label for="day_{{ day_num }}" class="form-label">{{ day_name }}:</label>
+                    <select id="day_{{ day_num }}" name="day_{{ day_num }}" class="form-select" {% if current_user_role == 'giaovien' %}disabled{% endif %}>
+                        <option value="">Không có lịch</option>
+                        {% for slot in time_slots %}
+                        <option value="{{ slot.value }}" {% if selected_schedule_value == slot.value %}selected{% endif %}>{{ slot.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+                {% endif %}
+
+                <button type="submit" class="btn btn-primary mt-3">{% if student %}Cập nhật học sinh{% else %}Thêm học sinh{% endif %}</button>
+                <a href="{{ url_for('students') }}" class="btn btn-secondary mt-3 ms-2">Hủy</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

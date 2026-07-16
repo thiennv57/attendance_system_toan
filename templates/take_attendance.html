@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.att-filter-card .card-body { padding: 0.75rem; }
+#makeup_results .table { font-size: 0.85rem; }
+</style>
+
+<div class="take-attendance-container mt-3">
+    <h4 class="mb-3 fw-bold">Điểm danh</h4>
+
+    <div class="card mb-3 shadow-sm att-filter-card">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('take_attendance') }}" class="row g-2 align-items-end">
+                <div class="col-12 col-sm-6 col-md-3">
+                    <label for="date" class="form-label mb-1 small fw-semibold">Ngày:</label>
+                    <input type="date" id="date" name="date" value="{{ date }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-sm-6 col-md-3">
+                    <label for="slot" class="form-label mb-1 small fw-semibold">Ca học:</label>
+                    <select id="slot" name="slot" class="form-select form-select-sm">
+                        <option value="">Chọn ca học</option>
+                        <option value="Ca 1: 18h -19h30" {% if selected_slot == 'Ca 1: 18h -19h30' %}selected{% endif %}>Ca 1: 18h -19h30</option>
+                        <option value="Ca 2: 19h30 - 21h" {% if selected_slot == 'Ca 2: 19h30 - 21h' %}selected{% endif %}>Ca 2: 19h30 - 21h</option>
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6 col-md-3">
+                    <button type="submit" class="btn btn-primary btn-sm w-100">Tải danh sách</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if students or search_results %}
+    <form method="POST" action="{{ url_for('take_attendance') }}" class="attendance-form mb-2">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="time_slot" value="{{ selected_slot }}">
+        <input type="hidden" name="return_to" value="{{ current_url }}">
+
+        <h4 class="mb-3">Học sinh cho ngày {{ date }} - {{ selected_slot }}</h4>
+
+        {% if recorder_present_counts %}
+        <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+            <span class="text-muted small me-1">Người điểm danh (có mặt):</span>
+            {% for recorder, count in recorder_present_counts.items() %}
+            <span class="badge bg-{{ recorder_colors.get(recorder, 'secondary') }}">
+                {{ recorder }}: <strong>{{ count }}</strong> có mặt
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="table-responsive mb-3">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>STT</th>
+                        <th>Tên</th>
+                        <th>Khối lớp</th>
+                        <th>Có mặt</th>
+                        <th>Người điểm danh</th>
+                    </tr>
+                </thead>
+                <tbody id="student-attendance-list">
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            {{ student.name }}
+                            {% if student.id not in scheduled_student_ids %}
+                            <span class="badge bg-warning text-dark ms-1">Học bù</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ student.grade }}</td>
+                        <td>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="attendance_{{ student.id }}" id="present_{{ student.id }}" value="present" {% if existing_attendance.get(student.id, {}).get('status') == 'present' %}checked{% endif %}>
+                                <label class="form-check-label" for="present_{{ student.id }}"></label>
+                            </div>
+                        </td>
+                        <td class="small text-muted">
+                            {% set rec = existing_attendance.get(student.id, {}).get('recorded_by', '') %}
+                            {% if rec %}
+                            <span class="badge bg-{{ recorder_colors.get(rec, 'secondary') }}">{{ rec }}</span>
+                            {% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit" class="btn btn-success">Lưu điểm danh</button>
+    </form>
+
+    {% else %}
+    <p class="alert alert-info">Chọn ngày và ca học để tải danh sách học sinh.</p>
+    {% endif %}
+
+    <div class="card mt-3 shadow-sm">
+        <div class="card-header fw-semibold">Thêm học sinh học bù</div>
+        <div class="card-body py-2">
+            <div class="input-group mb-2">
+                <input type="text" id="makeup_search" placeholder="Tên hoặc mã số học sinh..." class="form-control" autocomplete="off">
+                <button type="button" id="btn_makeup_search" class="btn btn-secondary">Tìm</button>
+            </div>
+            <div id="makeup_results"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const searchInput = document.getElementById('makeup_search');
+    const btnSearch = document.getElementById('btn_makeup_search');
+    const resultsDiv = document.getElementById('makeup_results');
+
+    function getDateSlot() {
+        return { date: '{{ date }}', time_slot: '{{ selected_slot }}' };
+    }
+
+    function doSearch() {
+        const q = searchInput.value.trim();
+        if (!q) return;
+        const { date, time_slot } = getDateSlot();
+        const url = `/api/search_students?q=${encodeURIComponent(q)}&date=${encodeURIComponent(date)}&time_slot=${encodeURIComponent(time_slot)}`;
+        fetch(url)
+            .then(r => r.json())
+            .then(data => renderResults(data))
+            .catch(() => { resultsDiv.innerHTML = '<p class="text-danger">Lỗi tìm kiếm.</p>'; });
+    }
+
+    function renderResults(students) {
+        if (!students.length) {
+            resultsDiv.innerHTML = '<p class="text-muted small mt-2">Không tìm thấy học sinh nào.</p>';
+            return;
+        }
+
+        const rows = students.map(s => `
+            <tr id="makeup_row_${s.id}">
+                <td>${s.excel_id || s.id}</td>
+                <td>${s.name}</td>
+                <td>${s.grade}</td>
+                <td>
+                    ${s.already_added
+                        ? '<span class="badge bg-success">Đã có mặt</span>'
+                        : `<button class="btn btn-primary btn-sm" onclick="addStudent(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Thêm</button>`
+                    }
+                </td>
+            </tr>`).join('');
+
+        resultsDiv.innerHTML = `
+            <div class="table-responsive mt-2">
+                <table class="table table-sm table-hover">
+                    <thead><tr><th>Mã HS</th><th>Tên</th><th>Khối</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    window.addStudent = function(studentId, studentName) {
+        const { date, time_slot } = getDateSlot();
+        if (!date || !time_slot) {
+            alert('Vui lòng chọn ngày và ca học trước.');
+            return;
+        }
+
+        fetch('/api/add_makeup_student', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ student_id: studentId, date: date, time_slot: time_slot })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                const list = document.getElementById('student-attendance-list');
+                if (list) {
+                    const rowCount = list.querySelectorAll('tr').length + 1;
+                    const newRow = document.createElement('tr');
+                    newRow.id = `att_row_${studentId}`;
+                    newRow.innerHTML = `
+                        <td>${rowCount}</td>
+                        <td>${studentName} <span class="badge bg-warning text-dark ms-1">Học bù</span></td>
+                        <td>${data.student.grade}</td>
+                        <td>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="attendance_${studentId}" id="present_${studentId}" value="present" checked>
+                                <label class="form-check-label" for="present_${studentId}"></label>
+                            </div>
+                        </td>
+                        <td class="small text-muted">-</td>`;
+                    list.appendChild(newRow);
+                }
+
+                const btn = document.querySelector(`#makeup_row_${studentId} button`);
+                if (btn) btn.closest('td').innerHTML = '<span class="badge bg-success">Đã thêm</span>';
+            } else {
+                alert(data.msg || 'Không thể thêm học sinh.');
+            }
+        })
+        .catch(() => alert('Lỗi kết nối.'));
+    };
+
+    btnSearch.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doSearch();
+        }
+    });
+})();
+</script>
+{% endblock %}

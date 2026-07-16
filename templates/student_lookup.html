@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+{{ edit_1 }}
+<div class="student-lookup-container mt-4">
+    <h2 class="mb-4">Tra cứu học sinh</h2>
+
+    <div class="card mb-4 card-light-cyan">
+        <div class="card-header"><strong>Tìm kiếm học sinh</strong></div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('student_lookup') }}" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="search_query" class="form-label">Tìm kiếm học sinh (Tên hoặc Mã số):</label>
+                    <input type="text" id="search_query" name="search_query" value="{{ search_query or '' }}" placeholder="Nhập tên hoặc mã số học sinh" class="form-control">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-custom w-100">Tìm kiếm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if student_search_results %}
+    <div class="card mb-4 card-light-blue">
+        <div class="card-header"><strong>Kết quả tìm kiếm: <span class="badge bg-info ms-2">{{ search_results_count }} kết quả</span></strong></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Mã số học sinh</th>
+                            <th>Tên</th>
+                            <th>Lớp</th>
+                            <th>Trường</th>
+                            <th>Hành động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in student_search_results %}
+                        <tr>
+                            <td>{{ student.excel_student_id or student.id }}</td>
+                            <td>{{ student.name }}</td>
+                            <td>{{ student.grade }}</td>
+                            <td>{{ student.school }}</td>
+                            <td>
+                                <a href="{{ url_for('student_lookup', selected_student_id=student.id, month_filter=month_filter, year_filter=year_filter) }}" class="btn btn-custom btn-sm">Xem điểm danh</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% elif search_query and not student_search_results %}
+    <p class="alert alert-warning">Không tìm thấy học sinh nào khớp với "{{ search_query }}".</p> {# alert alert-warning cho thông báo #}
+    {% endif %}
+
+    {% if selected_student %}
+    <div class="card mt-4 card-light-blue">
+        <div class="card-header">
+            <p class="card-text"><strong>Điểm danh:</strong> {{ selected_student.name }} - {{ selected_student.grade }} - {{ selected_student.school }}
+            <a href="{{ url_for('student_lookup') }}" class="btn btn-custom btn-sm float-end ms-2">Xóa lựa chọn học sinh</a>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('student_lookup') }}" class="row g-3 align-items-end mb-3">
+                <input type="hidden" name="selected_student_id" value="{{ selected_student.id }}">
+                <div class="col-md-3">
+                    <label for="month_filter_selected" class="form-label">Tháng:</label>
+                    <select id="month_filter_selected" name="month_filter" class="form-select">
+                        {% for m in months %}
+                            <option value="{{ m.value }}" {% if m.value == current_month %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="year_filter_selected" class="form-label">Năm:</label>
+                    <select id="year_filter_selected" name="year_filter" class="form-select">
+                        {% for y in years %}
+                            <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-custom w-100">Lọc</button>
+                </div>
+            </form>
+            <p class="card-text">Hiển thị bản ghi cho tháng {{ month_filter }} năm {{ year_filter }} cho đến hôm nay. <span class="badge bg-info ms-2">{{ attendance_records_count }} bản ghi</span></p>
+
+            {% if attendance_records %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Ngày</th>
+                            <th>Buổi</th>
+                            <th>Trạng thái</th>
+                            <th>Nhận xét</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in attendance_records %}
+                        <tr>
+                            <td>{{ record.date.strftime('%d-%m-%Y') }}</td>
+                            <td>{{ record.time_slot }}</td>
+                            <td>
+                                {% if record.status == 'present' %}
+                                    <span class="badge bg-success">Có mặt</span>
+                                {% elif record.status == 'absent' %}
+                                    <span class="badge bg-danger">Vắng mặt</span>
+                                {% elif record.status == 'Chưa điểm danh' %}
+                                    <span class="badge bg-warning">Chưa điểm danh</span>
+                                {% else %}
+                                    {{ record.status }}
+                                {% endif %}
+                            </td>
+                            <td>{{ record.comment if record.comment else '' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="alert alert-info">Không tìm thấy bản ghi điểm danh nào cho {{ selected_student.name }} trong tháng này.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{{ edit_2 }}
+
+
+{% endblock %}

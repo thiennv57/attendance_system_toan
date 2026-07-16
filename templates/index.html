@@ -1,0 +1,8 @@
+{{ edit_1 }}
+<div class="text-center mt-5"> {# text-center để căn giữa, mt-5 để tạo khoảng cách trên #}
+    <h1>Chào mừng đến với Hệ thống điểm danh học sinh</h1>
+    <p class="lead">Vui lòng đăng nhập hoặc tra cứu điểm danh học sinh.</p> {# Cập nhật văn bản #}
+    <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg me-2">Đăng nhập</a>
+    <a href="{{ url_for('student_lookup') }}" class="btn btn-secondary btn-lg">Tra cứu học sinh</a> {# Thay thế nút Register #}
+</div>
+{{ edit_2 }}

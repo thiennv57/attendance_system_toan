@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="attendance-history-container mt-4">
+    <h2 class="mb-4">Lịch sử điểm danh</h2>
+
+    <div class="card mb-4">
+        <div class="card-header">Lọc bản ghi</div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('attendance_history') }}" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">Ngày bắt đầu:</label>
+                    <input type="date" id="start_date" name="start_date" value="{{ start_date }}" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">Ngày kết thúc:</label>
+                    <input type="date" id="end_date" name="end_date" value="{{ end_date }}" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label for="slot" class="form-label">Ca học:</label>
+                    <select id="slot" name="time_slot" class="form-select">
+                        <option value="all" {% if time_slot == 'all' or not time_slot %}selected{% endif %}>Tất cả ca học</option>
+                        <option value="Ca 1: 18h -19h30" {% if time_slot == 'Ca 1: 18h -19h30' %}selected{% endif %}>Ca 1: 18h -19h30</option>
+                        <option value="Ca 2: 19h30 - 21h" {% if time_slot == 'Ca 2: 19h30 - 21h' %}selected{% endif %}>Ca 2: 19h30 - 21h</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="status_filter" class="form-label">Trạng thái:</label>
+                    <select id="status_filter" name="status_filter" class="form-select">
+                        <option value="" {% if selected_status is none %}selected{% endif %}>Tất cả</option>
+                        <option value="present" {% if selected_status == 'present' %}selected{% endif %}>Có mặt</option>
+                        <option value="absent" {% if selected_status == 'absent' %}selected{% endif %}>Vắng mặt</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="grade" class="form-label">Khối lớp:</label>
+                    <select id="grade" name="grade_filter" class="form-select">
+                        <option value="">Tất cả khối</option>
+                        {% for g in available_grades %}
+                        <option value="{{ g }}" {% if g == grade_filter %}selected{% endif %}>{{ g }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="recorded_by" class="form-label">Người điểm danh:</label>
+                    <select id="recorded_by" name="recorded_by_filter" class="form-select">
+                        <option value="">Tất cả</option>
+                        {% for user in available_users %}
+                        <option value="{{ user.id }}" {% if user.id == recorded_by_filter|int %}selected{% endif %}>{{ user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100">Áp dụng bộ lọc</button>
+                </div>
+            </form>
+
+            {% if selected_student_obj %}
+            <div class="mt-3">
+                <label class="form-label">Học sinh đã chọn:</label>
+                <span class="badge bg-info text-dark me-2">{{ selected_student_obj.name }} (ID: {{ selected_student_obj.excel_student_id or selected_student_obj.id }})</span>
+                <a href="{{ url_for('attendance_history', start_date=start_date, end_date=end_date, time_slot=time_slot, grade_filter=grade_filter, recorded_by_filter=recorded_by_filter) }}" class="btn btn-outline-secondary btn-sm">Xóa bộ lọc học sinh</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if grade_colors %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+        <span class="text-muted small me-1">Màu khối lớp:</span>
+        {% for grade, color in grade_colors.items() %}
+        <span class="badge bg-{{ color }}">{{ grade }}</span>
+        {% endfor %}
+        <span class="ms-3 text-muted small">
+            <span style="text-decoration:line-through;opacity:0.45">Tên (lớp)</span> = Vắng &nbsp;|&nbsp; ★ = Học bù
+        </span>
+    </div>
+    {% endif %}
+
+    {% if sessions %}
+    <p class="mb-2">
+        Tổng số ca học: <strong>{{ attendance_pagination.total }}</strong>
+        &nbsp;|&nbsp; Có mặt: <strong class="text-success">{{ total_present }}</strong>
+        &nbsp;|&nbsp; Vắng mặt: <strong class="text-danger">{{ total_absent }}</strong>
+        &nbsp;|&nbsp; Học bù: <strong class="text-warning">{{ total_makeup }}</strong>
+    </p>
+
+    <div class="d-flex align-items-center mb-3 gap-2">
+        <label for="per_page_select" class="form-label mb-0">Ca mỗi trang:</label>
+        <select class="form-select form-select-sm" id="per_page_select" style="width:auto"
+            onchange="window.location.href = this.value;">
+            {% for num in [10, 20, 50, 100] %}
+            <option value="{{ url_for('attendance_history', page=1, per_page=num, start_date=start_date, end_date=end_date, time_slot=time_slot, selected_student_id=selected_student_id, grade_filter=grade_filter, recorded_by_filter=recorded_by_filter, status_filter=selected_status) }}"
+                {% if num == attendance_pagination.per_page %}selected{% endif %}>{{ num }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="table-responsive mb-3">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:50px" class="text-center">STT</th>
+                    <th style="width:175px">Ngày - Ca học</th>
+                    <th>Học sinh</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in sessions %}
+                <tr>
+                    <td class="text-center text-muted small">
+                        {{ (attendance_pagination.page - 1) * attendance_pagination.per_page + loop.index }}
+                    </td>
+                    <td>
+                        <strong>{{ session.date.strftime('%d-%m-%Y') }}</strong><br>
+                        <span class="text-muted small">{{ session.time_slot }}</span><br>
+                        {% set ns = namespace(present=0, absent=0, makeup=0) %}
+                        {% for e in session.students %}
+                            {% if e.status == 'present' %}{% set ns.present = ns.present + 1 %}{% endif %}
+                            {% if e.status == 'absent' %}{% set ns.absent = ns.absent + 1 %}{% endif %}
+                            {% if e.make_up_class_note %}{% set ns.makeup = ns.makeup + 1 %}{% endif %}
+                        {% endfor %}
+                        <span class="text-success small">Có mặt: <strong>{{ ns.present }}</strong></span> |
+                        <span class="text-danger small">Vắng: <strong>{{ ns.absent }}</strong></span> |
+                        <span class="text-warning small">Học bù: <strong>{{ ns.makeup }}</strong></span>
+                    </td>
+                    <td>
+                        {% for entry in session.students %}
+                        {% set gc = grade_colors.get(entry.student.grade, 'secondary') %}
+                        {% set gn = entry.student.grade.split()[-1] if entry.student.grade else '' %}
+                        {% if entry.status == 'present' %}
+                        <span class="badge bg-{{ gc }} me-1 mb-1"
+                            title="{{ entry.recorded_by }}{% if entry.make_up_class_note %} | học bù{% endif %}">
+                            {{ entry.student.name }} ({{ gn }}){% if entry.make_up_class_note %} ★{% endif %}
+                        </span>
+                        {% else %}
+                        <span class="badge bg-{{ gc }} me-1 mb-1"
+                            style="opacity:0.45;text-decoration:line-through"
+                            title="Vắng | {{ entry.recorded_by }}">
+                            {{ entry.student.name }} ({{ gn }})
+                        </span>
+                        {% endif %}
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="text-end mb-3">
+        <a href="{{ url_for('export_attendance_history', start_date=start_date, end_date=end_date, time_slot=time_slot, selected_student_id=selected_student_id, grade_filter=grade_filter) }}"
+            class="btn btn-info btn-sm">Xuất ra CSV</a>
+    </div>
+
+    {% if attendance_pagination.pages > 1 %}
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            {% if attendance_pagination.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('attendance_history', page=attendance_pagination.prev_num, per_page=attendance_pagination.per_page, start_date=start_date, end_date=end_date, time_slot=time_slot, selected_student_id=selected_student_id, grade_filter=grade_filter, recorded_by_filter=recorded_by_filter, status_filter=selected_status) }}">Trước</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">Trước</a></li>
+            {% endif %}
+
+            {% for p in attendance_pagination.iter_pages() %}
+                {% if p %}
+                    {% if p == attendance_pagination.page %}
+                    <li class="page-item active" aria-current="page">
+                        <a class="page-link" href="#">{{ p }}</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('attendance_history', page=p, per_page=attendance_pagination.per_page, start_date=start_date, end_date=end_date, time_slot=time_slot, selected_student_id=selected_student_id, grade_filter=grade_filter, recorded_by_filter=recorded_by_filter, status_filter=selected_status) }}">{{ p }}</a>
+                    </li>
+                    {% endif %}
+                {% else %}
+                <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if attendance_pagination.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('attendance_history', page=attendance_pagination.next_num, per_page=attendance_pagination.per_page, start_date=start_date, end_date=end_date, time_slot=time_slot, selected_student_id=selected_student_id, grade_filter=grade_filter, recorded_by_filter=recorded_by_filter, status_filter=selected_status) }}">Tiếp</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><a class="page-link" href="#">Tiếp</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <p class="alert alert-info">Không tìm thấy bản ghi điểm danh nào cho các tiêu chí đã chọn.</p>
+    {% endif %}
+</div>
+{% endblock %}
