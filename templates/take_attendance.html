@@ -25,11 +25,28 @@
                     </select>
                 </div>
                 <div class="col-12 col-sm-6 col-md-3">
+                    <label for="recorded_by_filter" class="form-label mb-1 small fw-semibold">Người điểm danh:</label>
+                    <select id="recorded_by_filter" name="recorded_by_filter" class="form-select form-select-sm">
+                        <option value="">Tất cả</option>
+                        {% for user in available_users %}
+                        <option value="{{ user.id }}" {% if recorded_by_filter|string == user.id|string %}selected{% endif %}>
+                            {{ user.username }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6 col-md-3">
                     <button type="submit" class="btn btn-primary btn-sm w-100">Tải danh sách</button>
                 </div>
             </form>
         </div>
     </div>
+
+    {% if recorded_by_filter and selected_slot and date %}
+    <div class="alert alert-info py-2 small">
+        Đang hiển thị những học sinh trong ca này do người điểm danh được chọn ghi nhận.
+    </div>
+    {% endif %}
 
     {% if students or search_results %}
     <form method="POST" action="{{ url_for('take_attendance') }}" class="attendance-form mb-2">

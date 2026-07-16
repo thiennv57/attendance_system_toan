@@ -1279,7 +1279,7 @@ def take_attendance():
     selected_slot = request.args.get('slot', '')
     time_slot = selected_slot # Initialize time_slot for GET requests
     recorded_by_filter = request.args.get('recorded_by_filter', '')
-    available_users = User.query.all()
+    available_users = User.query.filter(User.role.in_(['admin', 'giaovien'])).order_by(User.username.asc()).all()
     # selected_grade = request.args.get('grade', '') # Removed grade filter
     search_query = request.args.get('search_query', '') # Truyền search_query vào template
     # Normalize the search query for diacritic-insensitive comparison
