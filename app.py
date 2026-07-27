@@ -163,6 +163,65 @@ def add_attempts_to_exam(exam_id, student_ids, start_attempt, count=1):
             ))
 
 
+def get_exam_student_ids(exam_id):
+    return {
+        student_id
+        for (student_id,) in db.session.query(TestScore.student_id).filter_by(
+            test_exam_id=exam_id
+        ).distinct().all()
+    }
+
+
+def sync_exam_roster(exam):
+    attempt_numbers = get_exam_attempt_numbers(exam.id)
+    if not attempt_numbers:
+        return {'added': 0, 'removed': 0}
+
+    target_student_ids = {
+        student.id
+        for student in Student.query.filter_by(grade=exam.grade).all()
+    }
+    existing_student_ids = get_exam_student_ids(exam.id)
+
+    missing_student_ids = sorted(target_student_ids - existing_student_ids)
+    removed_student_ids = sorted(existing_student_ids - target_student_ids)
+
+    for student_id in missing_student_ids:
+        for attempt_number in attempt_numbers:
+            db.session.add(TestScore(
+                test_exam_id=exam.id,
+                student_id=student_id,
+                attempt_number=attempt_number
+            ))
+
+    if removed_student_ids:
+        TestScore.query.filter(
+            TestScore.test_exam_id == exam.id,
+            TestScore.student_id.in_(removed_student_ids)
+        ).delete(synchronize_session=False)
+
+    return {
+        'added': len(missing_student_ids),
+        'removed': len(removed_student_ids)
+    }
+
+
+def sync_exams_for_grade(grade):
+    if not grade:
+        return {'added': 0, 'removed': 0, 'exam_count': 0}
+
+    totals = {'added': 0, 'removed': 0, 'exam_count': 0}
+    exams = TestExam.query.filter_by(grade=grade).all()
+
+    for exam in exams:
+        result = sync_exam_roster(exam)
+        totals['added'] += result['added']
+        totals['removed'] += result['removed']
+        totals['exam_count'] += 1
+
+    return totals
+
+
 def build_sorted_test_rows(results, sort_by='name', sort_order='asc'):
     student_map = {
         student.id: student
@@ -1111,6 +1170,7 @@ def add_student():
                 )
                 db.session.add(new_assignment)
 
+        sync_exams_for_grade(new_student.grade)
         db.session.commit()
         flash(f'Học sinh {name} đã được thêm thành công.', 'success')
         return redirect(url_for('students')) # Redirect to main students list after detailed add
@@ -1179,6 +1239,7 @@ def edit_student(student_id):
 
     if request.method == 'POST':
         if current_user.role == 'admin':
+            previous_grade = student.grade
             student.name = request.form['name']
             if not student.name:
                 flash('Tên học sinh không được để trống.', 'danger')
@@ -1239,6 +1300,11 @@ def edit_student(student_id):
                 return redirect(url_for('students')) # Or redirect to a more appropriate page
             student.comment = request.form.get('comment')
 
+        if current_user.role == 'admin':
+            sync_exams_for_grade(previous_grade)
+            if student.grade != previous_grade:
+                sync_exams_for_grade(student.grade)
+
         db.session.commit()
         flash(f'Học sinh {student.name} đã được cập nhật thành công.', 'success')
         return redirect(url_for('students'))
@@ -1258,6 +1324,10 @@ def delete_student(student_id):
     db.session.query(Attendance).filter_by(student_id=student.id).delete()
     # Delete associated tuition records
     db.session.query(Tuition).filter_by(student_id=student.id).delete()
+    # Delete associated test score records
+    db.session.query(TestScore).filter_by(student_id=student.id).delete()
+    # Delete associated teacher assignments
+    db.session.query(TeacherStudentAssignment).filter_by(student_id=student.id).delete()
 
     db.session.delete(student)
     db.session.commit()
@@ -1908,6 +1978,9 @@ def import_excel():
         filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filename)
         import_excel_data(filename, db, Student, Schedule)
+        for (grade,) in db.session.query(Student.grade).distinct().all():
+            sync_exams_for_grade(grade)
+        db.session.commit()
         flash('Data imported successfully')
         return redirect(url_for('student_management')) # Redirect to new management page
 
@@ -2570,6 +2643,12 @@ def test_management():
     )
     exams = exams_pagination.items
 
+    for exam in exams:
+        sync_exam_roster(exam)
+
+    if exams:
+        db.session.commit()
+
     exam_ids = [exam.id for exam in exams]
     student_counts = {}
     if exam_ids:
@@ -2669,6 +2748,7 @@ def edit_test_exam(exam_id):
         exam.title = title
         exam.grade = grade
         exam.description = description or None
+        sync_exam_roster(exam)
         db.session.commit()
 
         flash(f'Đã cập nhật bài kiểm tra "{title}".', 'success')
@@ -2832,6 +2912,8 @@ def manage_test_exam(exam_id):
         abort(403)
 
     exam = TestExam.query.get_or_404(exam_id)
+    sync_exam_roster(exam)
+    db.session.commit()
     attempt_numbers = get_exam_attempt_numbers(exam.id)
     if not attempt_numbers:
         flash('Bài kiểm tra này chưa có lần kiểm tra nào.', 'warning')
@@ -2939,6 +3021,8 @@ def export_public_test_scores_csv():
         return redirect(url_for('public_test_scores'))
 
     selected_exam = TestExam.query.get_or_404(selected_exam_id)
+    sync_exam_roster(selected_exam)
+    db.session.commit()
     attempt_numbers = get_exam_attempt_numbers(selected_exam.id)
     if attempt_filter != 'all' and (not attempt_filter.isdigit() or int(attempt_filter) not in attempt_numbers):
         attempt_filter = 'all'
@@ -2998,6 +3082,10 @@ def export_public_test_scores_csv():
 @app.route('/test_scores')
 def public_test_scores():
     exams = TestExam.query.order_by(TestExam.created_at.desc(), TestExam.id.desc()).all()
+    for exam in exams:
+        sync_exam_roster(exam)
+    if exams:
+        db.session.commit()
 
     selected_exam_id = request.args.get('exam_id', type=int)
     attempt_filter = request.args.get('attempt_filter', 'all')

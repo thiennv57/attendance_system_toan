@@ -1,149 +1,126 @@
 """
 Database Backup Manager
-Backup mỗi tuần 1 lần, tối đa 10 file backup
+Backup moi tuan 1 lan, toi da 10 file backup
 """
 
-import shutil
 import os
-import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
-BACKUP_DIR = 'backups'
+BASE_DIR = Path(__file__).resolve().parent
+BACKUP_DIR = BASE_DIR / 'backups'
 MAX_BACKUPS = 10
-STUDENTS_DB = 'instance/students.db'
-ATTENDANCE_DB = 'instance/attendance.db'
+STUDENTS_DB = BASE_DIR / 'instance' / 'students.db'
+ATTENDANCE_DB = BASE_DIR / 'instance' / 'attendance.db'
+
 
 def ensure_backup_dir():
-    """Tạo thư mục backup nếu chưa có"""
-    if not os.path.exists(BACKUP_DIR):
-        os.makedirs(BACKUP_DIR)
-        print(f"✅ Thư mục backup '{BACKUP_DIR}' đã được tạo")
+    """Tao thu muc backup neu chua co."""
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def backup_databases():
     """
-    Tạo backup cho cả 2 database
-    Tên file: students_DDMMYYYY_HHMMSS.db, attendance_DDMMYYYY_HHMMSS.db
+    Tao backup cho ca 2 database.
+    Ten file: students_DDMMYYYY_HHMMSS.db, attendance_DDMMYYYY_HHMMSS.db
     """
     ensure_backup_dir()
-    
     timestamp = datetime.now().strftime('%d%m%Y_%H%M%S')
-    
+
     try:
-        # Backup students.db
-        if os.path.exists(STUDENTS_DB):
-            backup_students = os.path.join(BACKUP_DIR, f'students_{timestamp}.db')
+        if STUDENTS_DB.exists():
+            backup_students = BACKUP_DIR / f'students_{timestamp}.db'
             shutil.copy2(STUDENTS_DB, backup_students)
-            print(f"✅ Backup students.db: {backup_students}")
-        
-        # Backup attendance.db
-        if os.path.exists(ATTENDANCE_DB):
-            backup_attendance = os.path.join(BACKUP_DIR, f'attendance_{timestamp}.db')
+            print(f"Backup students.db: {backup_students}")
+
+        if ATTENDANCE_DB.exists():
+            backup_attendance = BACKUP_DIR / f'attendance_{timestamp}.db'
             shutil.copy2(ATTENDANCE_DB, backup_attendance)
-            print(f"✅ Backup attendance.db: {backup_attendance}")
-        
-        # Cleanup old backups
+            print(f"Backup attendance.db: {backup_attendance}")
+
         cleanup_old_backups()
-        
-        print(f"✅ Backup hoàn tất vào lúc {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        print(f"Backup hoan tat vao luc {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
         return True
-        
     except Exception as e:
-        print(f"❌ Lỗi backup: {str(e)}")
+        print(f"Loi backup: {str(e)}")
         return False
 
+
 def cleanup_old_backups():
-    """
-    Xoá backup tệp (cũ) để giữ tối đa 10 file
-    """
+    """Xoa backup cu de giu toi da MAX_BACKUPS file."""
     ensure_backup_dir()
-    
-    # Lấy tất cả file backup
+
     backup_files = []
     for filename in os.listdir(BACKUP_DIR):
         if filename.endswith('.db'):
-            filepath = os.path.join(BACKUP_DIR, filename)
-            # Lấy thời gian tạo file
-            mtime = os.path.getmtime(filepath)
-            backup_files.append((filepath, mtime, filename))
-    
-    # Nếu có > 10 file, xoá những file cũ nhất
+            filepath = BACKUP_DIR / filename
+            backup_files.append((filepath, filepath.stat().st_mtime, filename))
+
     if len(backup_files) > MAX_BACKUPS:
-        # Sắp xếp theo thời gian (cũ nhất trước)
         backup_files.sort(key=lambda x: x[1])
-        
-        # Xoá những file cũ nhất (giữ lại 10 file mới nhất)
         to_delete = len(backup_files) - MAX_BACKUPS
         for i in range(to_delete):
             filepath, _, filename = backup_files[i]
             try:
-                os.remove(filepath)
-                print(f"🗑️  Đã xoá backup cũ: {filename}")
+                filepath.unlink()
+                print(f"Da xoa backup cu: {filename}")
             except Exception as e:
-                print(f"❌ Lỗi khi xoá {filename}: {str(e)}")
+                print(f"Loi khi xoa {filename}: {str(e)}")
+
 
 def get_backup_files():
-    """
-    Lấy danh sách tất cả file backup
-    """
+    """Lay danh sach tat ca file backup."""
     ensure_backup_dir()
     backup_files = []
-    
+
     for filename in os.listdir(BACKUP_DIR):
         if filename.endswith('.db'):
-            filepath = os.path.join(BACKUP_DIR, filename)
-            mtime = os.path.getmtime(filepath)
-            size = os.path.getsize(filepath)
+            filepath = BACKUP_DIR / filename
             backup_files.append({
                 'filename': filename,
-                'filepath': filepath,
-                'created_at': datetime.fromtimestamp(mtime),
-                'size_kb': size / 1024
+                'filepath': str(filepath),
+                'created_at': datetime.fromtimestamp(filepath.stat().st_mtime),
+                'size_kb': filepath.stat().st_size / 1024,
             })
-    
-    # Sắp xếp theo ngày (mới nhất trước)
+
     backup_files.sort(key=lambda x: x['created_at'], reverse=True)
     return backup_files
 
+
 def restore_backup(backup_filename):
-    """
-    Restore database từ backup file
-    """
-    backup_path = os.path.join(BACKUP_DIR, backup_filename)
-    
-    if not os.path.exists(backup_path):
-        print(f"❌ File backup không tồn tại: {backup_path}")
+    """Restore database tu backup file."""
+    backup_path = BACKUP_DIR / backup_filename
+
+    if not backup_path.exists():
+        print(f"File backup khong ton tai: {backup_path}")
         return False
-    
+
     try:
-        # Xác định loại database từ tên file
         if 'students' in backup_filename:
             target_db = STUDENTS_DB
         elif 'attendance' in backup_filename:
             target_db = ATTENDANCE_DB
         else:
-            print("❌ Không thể xác định loại database từ tên file")
+            print("Khong the xac dinh loai database tu ten file")
             return False
-        
-        # Backup file hiện tại trước khi restore
-        current_backup = f"{target_db}.before_restore_{datetime.now().strftime('%d%m%Y_%H%M%S')}"
-        if os.path.exists(target_db):
+
+        current_backup = target_db.parent / f"{target_db.name}.before_restore_{datetime.now().strftime('%d%m%Y_%H%M%S')}"
+        if target_db.exists():
             shutil.copy2(target_db, current_backup)
-            print(f"✅ Đã backup file hiện tại: {current_backup}")
-        
-        # Restore từ backup
+            print(f"Da backup file hien tai: {current_backup}")
+
         shutil.copy2(backup_path, target_db)
-        print(f"✅ Đã restore từ: {backup_filename} → {target_db}")
+        print(f"Da restore tu: {backup_filename} -> {target_db}")
         return True
-        
     except Exception as e:
-        print(f"❌ Lỗi restore: {str(e)}")
+        print(f"Loi restore: {str(e)}")
         return False
 
+
 if __name__ == '__main__':
-    # Test backup
-    print("🔄 Bắt đầu backup...")
+    print("Bat dau backup...")
     backup_databases()
-    print("\n📋 Danh sách backup:")
+    print("\nDanh sach backup:")
     for bf in get_backup_files():
         print(f"  - {bf['filename']} ({bf['size_kb']:.1f} KB) - {bf['created_at'].strftime('%d/%m/%Y %H:%M:%S')}")
