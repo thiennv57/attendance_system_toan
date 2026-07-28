@@ -53,6 +53,7 @@
         <input type="hidden" name="date" value="{{ date }}">
         <input type="hidden" name="time_slot" value="{{ selected_slot }}">
         <input type="hidden" name="return_to" value="{{ current_url }}">
+        <input type="hidden" name="present_student_ids" id="present_student_ids" value="">
 
         <h4 class="mb-3">Học sinh cho ngày {{ date }} - {{ selected_slot }}</h4>
 
@@ -91,7 +92,7 @@
                         <td>{{ student.grade }}</td>
                         <td>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="attendance_{{ student.id }}" id="present_{{ student.id }}" value="present" {% if existing_attendance.get(student.id, {}).get('status') == 'present' %}checked{% endif %}>
+                                <input class="form-check-input attendance-checkbox" type="checkbox" id="present_{{ student.id }}" value="present" data-student-id="{{ student.id }}" {% if existing_attendance.get(student.id, {}).get('status') == 'present' %}checked{% endif %}>
                                 <label class="form-check-label" for="present_{{ student.id }}"></label>
                             </div>
                         </td>
@@ -127,9 +128,21 @@
 
 <script>
 (function () {
+    const attendanceForm = document.querySelector('.attendance-form');
+    const presentStudentIdsInput = document.getElementById('present_student_ids');
     const searchInput = document.getElementById('makeup_search');
     const btnSearch = document.getElementById('btn_makeup_search');
     const resultsDiv = document.getElementById('makeup_results');
+
+    if (attendanceForm && presentStudentIdsInput) {
+        attendanceForm.addEventListener('submit', function () {
+            const checkedStudentIds = Array.from(
+                attendanceForm.querySelectorAll('.attendance-checkbox:checked')
+            ).map((checkbox) => checkbox.dataset.studentId).filter(Boolean);
+
+            presentStudentIdsInput.value = checkedStudentIds.join(',');
+        });
+    }
 
     function getDateSlot() {
         return { date: '{{ date }}', time_slot: '{{ selected_slot }}' };
@@ -200,7 +213,7 @@
                         <td>${data.student.grade}</td>
                         <td>
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="attendance_${studentId}" id="present_${studentId}" value="present" checked>
+                                <input class="form-check-input attendance-checkbox" type="checkbox" id="present_${studentId}" value="present" data-student-id="${studentId}" checked>
                                 <label class="form-check-label" for="present_${studentId}"></label>
                             </div>
                         </td>

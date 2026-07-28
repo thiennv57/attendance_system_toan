@@ -1377,6 +1377,7 @@ def take_attendance():
     if request.method == 'POST':
         date_str = request.form.get('date')
         time_slot = request.form.get('time_slot')
+        present_student_ids_raw = request.form.get('present_student_ids', '')
 
         if not date_str or not time_slot:
             flash('Date and Time Slot are required to save attendance.', 'error')
@@ -1405,16 +1406,19 @@ def take_attendance():
             scheduled_student_ids = [s.id for s in scheduled_students_for_day]
 
         all_students_expected_ids = {s.id for s in scheduled_students_for_day}
-        submitted_student_ids = set()
-
-        for student_id_str in request.form.keys():
-            if student_id_str.startswith('attendance_'):
-                try:
-                    student_id = int(student_id_str.replace('attendance_', ''))
-                    submitted_student_ids.add(student_id)
-                except ValueError:
-                    flash(f'Invalid student ID in attendance data: {student_id_str}', 'error')
+        present_student_ids = set()
+        if present_student_ids_raw.strip():
+            for raw_student_id in present_student_ids_raw.split(','):
+                raw_student_id = raw_student_id.strip()
+                if not raw_student_id:
                     continue
+                try:
+                    present_student_ids.add(int(raw_student_id))
+                except ValueError:
+                    flash(f'Invalid student ID in attendance data: {raw_student_id}', 'error')
+                    return redirect_back('take_attendance', date=date_str, slot=time_slot)
+
+        for student_id in present_student_ids:
 
                 existing_attendance = db.session.query(Attendance).filter_by(
                     student_id=student_id,
@@ -1423,7 +1427,7 @@ def take_attendance():
                 ).first()
 
                 if existing_attendance:
-                    if existing_attendance.status != 'present':
+                    if existing_attendance.status != 'present' or existing_attendance.update_by != current_user.id:
                         existing_attendance.status = 'present'
                         existing_attendance.update_by = current_user.id
                         existing_attendance.updated_at = datetime.now()
@@ -1440,7 +1444,7 @@ def take_attendance():
 
         # Handle students who were expected but not submitted (i.e., unticked in the form)
         # → update existing 'present' to 'absent', or CREATE a new 'absent' record if none exists
-        for student_id in all_students_expected_ids:
+        for student_id in []:
             if student_id not in submitted_student_ids:
                 existing_attendance = db.session.query(Attendance).filter_by(
                     student_id=student_id,
@@ -1478,7 +1482,7 @@ def take_attendance():
             time_slot=time_slot
         ).all()
 
-        for record in all_existing_attendance_records:
+        for record in []:
             # Check if the student is not a scheduled student AND not in the submitted form
             if record.student_id not in all_students_expected_ids and record.student_id not in submitted_student_ids:
                 db.session.delete(record)
