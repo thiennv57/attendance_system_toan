@@ -114,6 +114,16 @@ def sort_students_for_display(students_list):
     )
 
 
+def build_attendance_recorder_filter(user_id):
+    return and_(
+        Attendance.status == 'present',
+        or_(
+            and_(Attendance.update_by.isnot(None), Attendance.update_by == user_id),
+            and_(Attendance.update_by.is_(None), Attendance.created_by == user_id)
+        )
+    )
+
+
 def parse_optional_score(raw_value):
     if raw_value is None:
         return None
@@ -1385,8 +1395,13 @@ def take_attendance():
         day_of_week_for_schedule = day_map.get(iso_day)
 
         students_on_schedule = []
+        scheduled_students_for_day = []
         if day_of_week_for_schedule:
-            scheduled_students_for_day = db.session.query(Student).join(Schedule).filter(Schedule.day_of_week == day_of_week_for_schedule).filter(Schedule.time_slot == time_slot).all()
+            scheduled_students_query = db.session.query(Student).join(Schedule).filter(
+                Schedule.day_of_week == day_of_week_for_schedule,
+                Schedule.time_slot == time_slot
+            )
+            scheduled_students_for_day = scheduled_students_query.all()
             scheduled_student_ids = [s.id for s in scheduled_students_for_day]
 
         all_students_expected_ids = {s.id for s in scheduled_students_for_day}
@@ -1401,8 +1416,6 @@ def take_attendance():
                     flash(f'Invalid student ID in attendance data: {student_id_str}', 'error')
                     continue
 
-                status = 'present' if request.form.get(student_id_str) == 'present' else 'absent'
-
                 existing_attendance = db.session.query(Attendance).filter_by(
                     student_id=student_id,
                     date=attendance_date,
@@ -1410,8 +1423,8 @@ def take_attendance():
                 ).first()
 
                 if existing_attendance:
-                    if existing_attendance.status != status:
-                        existing_attendance.status = status
+                    if existing_attendance.status != 'present':
+                        existing_attendance.status = 'present'
                         existing_attendance.update_by = current_user.id
                         existing_attendance.updated_at = datetime.now()
                 else:
@@ -1419,7 +1432,7 @@ def take_attendance():
                         student_id=student_id,
                         date=attendance_date,
                         time_slot=time_slot,
-                        status=status,
+                        status='present',
                         created_by=current_user.id,
                         update_by=current_user.id
                     )
@@ -1436,9 +1449,17 @@ def take_attendance():
                 ).first()
 
                 if existing_attendance:
-                    if existing_attendance.status == 'present':
+                    teacher_owns_present_record = db.session.query(Attendance.id).filter(
+                        Attendance.id == existing_attendance.id,
+                        build_attendance_recorder_filter(current_user.id)
+                    ).first()
+
+                    if existing_attendance.status == 'present' and teacher_owns_present_record:
                         existing_attendance.status = 'absent'
-                        existing_attendance.update_by = current_user.id
+                        existing_attendance.update_by = None
+                        existing_attendance.updated_at = datetime.now()
+                    elif existing_attendance.status == 'absent' and existing_attendance.update_by is not None:
+                        existing_attendance.update_by = None
                         existing_attendance.updated_at = datetime.now()
                 else:
                     absent_record = Attendance(
@@ -1447,7 +1468,7 @@ def take_attendance():
                         time_slot=time_slot,
                         status='absent',
                         created_by=current_user.id,
-                        update_by=current_user.id
+                        update_by=None
                     )
                     db.session.add(absent_record)
 
@@ -1489,7 +1510,7 @@ def take_attendance():
         if recorded_by_filter:
             try:
                 recorded_by_filter_id = int(recorded_by_filter)
-                query = query.filter(or_(and_(Attendance.update_by.isnot(None), Attendance.update_by == recorded_by_filter_id), and_(Attendance.update_by.is_(None), Attendance.created_by == recorded_by_filter_id)))
+                query = query.filter(build_attendance_recorder_filter(recorded_by_filter_id))
             except ValueError:
                 # Handle case where recorded_by_filter is not a valid integer (e.g., empty string or invalid input)
                 pass
@@ -1499,7 +1520,11 @@ def take_attendance():
         for record in all_attendance_records_for_slot:
             existing_attendance_map[record.student_id] = {
                 'status': record.status,
-                'recorded_by': record.update_by_user.username if record.update_by_user else record.created_by_user.username
+                'recorded_by': (
+                    record.update_by_user.username if record.status == 'present' and record.update_by_user
+                    else record.created_by_user.username if record.status == 'present' and record.created_by_user
+                    else ''
+                )
             }
 
         # Update attendance map with existing records
@@ -1532,7 +1557,7 @@ def take_attendance():
             search_results = db.session.query(Student).filter(
                 or_(
                     Student.name.ilike(f'%{search_query}'),
-                Student.normalized_name.ilike(f'%{normalized_search_query}'),
+                    Student.normalized_name.ilike(f'%{normalized_search_query}'),
                     Student.excel_student_id.ilike(f'%{search_query}%')
                 ),
                 ~Student.id.in_(all_student_ids_for_display) # Exclude students already being displayed
@@ -1826,10 +1851,7 @@ def attendance_history():
     if recorded_by_filter:
         try:
             recorded_by_filter_id = int(recorded_by_filter)
-            attendance_query = attendance_query.filter(or_(
-                and_(Attendance.update_by.isnot(None), Attendance.update_by == recorded_by_filter_id),
-                and_(Attendance.update_by.is_(None), Attendance.created_by == recorded_by_filter_id)
-            ))
+            attendance_query = attendance_query.filter(build_attendance_recorder_filter(recorded_by_filter_id))
         except ValueError:
             flash('ID người điểm danh không hợp lệ.', 'warning')
             recorded_by_filter = ''
@@ -1873,7 +1895,7 @@ def attendance_history():
             'student': student,
             'status': attendance.status,
             'make_up_class_note': make_up_class_note,
-            'recorded_by': updated_by_username or created_by_username or '',
+            'recorded_by': (updated_by_username or created_by_username or '') if attendance.status == 'present' else '',
         })
 
     # Build sorted session list (newest first), sort students within each session by grade then name
