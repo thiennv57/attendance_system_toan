@@ -54,6 +54,7 @@
         <input type="hidden" name="time_slot" value="{{ selected_slot }}">
         <input type="hidden" name="return_to" value="{{ current_url }}">
         <input type="hidden" name="present_student_ids" id="present_student_ids" value="">
+        <input type="hidden" name="visible_student_ids" id="visible_student_ids" value="">
 
         <h4 class="mb-3">Học sinh cho ngày {{ date }} - {{ selected_slot }}</h4>
 
@@ -92,7 +93,7 @@
                         <td>{{ student.grade }}</td>
                         <td>
                             <div class="form-check">
-                                <input class="form-check-input attendance-checkbox" type="checkbox" id="present_{{ student.id }}" value="present" data-student-id="{{ student.id }}" {% if existing_attendance.get(student.id, {}).get('status') == 'present' %}checked{% endif %}>
+                                <input class="form-check-input attendance-checkbox" type="checkbox" id="present_{{ student.id }}" value="present" data-student-id="{{ student.id }}" {% if existing_attendance.get(student.id, {}).get('is_checked') %}checked{% endif %} {% if existing_attendance.get(student.id, {}).get('is_locked') %}disabled{% endif %}>
                                 <label class="form-check-label" for="present_{{ student.id }}"></label>
                             </div>
                         </td>
@@ -130,17 +131,22 @@
 (function () {
     const attendanceForm = document.querySelector('.attendance-form');
     const presentStudentIdsInput = document.getElementById('present_student_ids');
+    const visibleStudentIdsInput = document.getElementById('visible_student_ids');
     const searchInput = document.getElementById('makeup_search');
     const btnSearch = document.getElementById('btn_makeup_search');
     const resultsDiv = document.getElementById('makeup_results');
 
-    if (attendanceForm && presentStudentIdsInput) {
+    if (attendanceForm && presentStudentIdsInput && visibleStudentIdsInput) {
         attendanceForm.addEventListener('submit', function () {
             const checkedStudentIds = Array.from(
-                attendanceForm.querySelectorAll('.attendance-checkbox:checked')
+                attendanceForm.querySelectorAll('.attendance-checkbox:checked:not(:disabled)')
+            ).map((checkbox) => checkbox.dataset.studentId).filter(Boolean);
+            const visibleStudentIds = Array.from(
+                attendanceForm.querySelectorAll('.attendance-checkbox')
             ).map((checkbox) => checkbox.dataset.studentId).filter(Boolean);
 
             presentStudentIdsInput.value = checkedStudentIds.join(',');
+            visibleStudentIdsInput.value = visibleStudentIds.join(',');
         });
     }
 
