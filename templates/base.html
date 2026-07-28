@@ -41,15 +41,15 @@
                         <a class="app-nav__link app-nav__link--amber" href="{{ url_for('comment_management') }}"><i class="fas fa-comments"></i><span>Nhận xét</span></a>
                     </li>
                     <li class="nav-item">
-                        <a class="app-nav__link app-nav__link--slate" href="{{ url_for('attendance_history') }}"><i class="fas fa-clock-rotate-left"></i><span>Lịch sử</span></a>
-                    </li>
-                    <li class="nav-item">
                         <a class="app-nav__link app-nav__link--rose" href="{{ url_for('test_management') }}"><i class="fas fa-file-pen"></i><span>Bài kiểm tra</span></a>
                     </li>
                     {% endif %}
                     {% if current_user.role == 'admin' %}
                     <li class="nav-item">
                         <a class="app-nav__link app-nav__link--indigo" href="{{ url_for('users') }}"><i class="fas fa-users-cog"></i><span>Người dùng</span></a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="app-nav__link app-nav__link--slate" href="{{ url_for('attendance_history') }}"><i class="fas fa-clock-rotate-left"></i><span>Lịch sử</span></a>
                     </li>
                     <li class="nav-item">
                         <a class="app-nav__link app-nav__link--gold" href="{{ url_for('tuition_management') }}"><i class="fas fa-wallet"></i><span>Học phí</span></a>
