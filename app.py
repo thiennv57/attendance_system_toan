@@ -325,7 +325,11 @@ def zip_filter(a, b):
 
 app = Flask(__name__, instance_relative_config=True)
 app.jinja_env.filters['zip'] = zip_filter
-app.config['SECRET_KEY'] = 'lopcophuong'
+app.config['SECRET_KEY'] = 'lopcophuong@2026'
+# Ghi nhớ đăng nhập: cookie remember của Flask-Login có hiệu lực 15 ngày
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=15)
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, 'attendance.db')
 print(f"SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
 app.config['SQLALCHEMY_BINDS'] = {
@@ -404,7 +408,7 @@ def load_user(user_id):
 def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    return redirect(url_for('student_lookup'))
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -417,7 +421,8 @@ def login():
         user = db.session.query(User).filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
-            login_user(user)
+            remember = request.form.get('remember') == 'on'
+            login_user(user, remember=remember, duration=app.config['REMEMBER_COOKIE_DURATION'])
             return redirect(url_for('dashboard'))
         flash('Invalid username or password', 'danger')
     return render_template('login.html')
