@@ -309,10 +309,18 @@ class Pagination:
                 yield num
                 last = num
 
-def get_teacher_users():
-    """Danh sách tài khoản được điểm danh (giáo viên + admin), sắp theo tên hiển thị."""
-    users = User.query.filter(User.role.in_(['admin', 'giaovien'])).all()
+def _sort_users_by_label(users):
     return sorted(users, key=lambda u: ((u.display_name or u.username or '').lower(), u.username or ''))
+
+
+def get_teacher_users():
+    """Danh sách tài khoản dùng cho bộ lọc người điểm danh (giáo viên + admin)."""
+    return _sort_users_by_label(User.query.filter(User.role.in_(['admin', 'giaovien'])).all())
+
+
+def get_attendance_teachers():
+    """Danh sách giáo viên được điểm danh — KHÔNG gồm tài khoản admin."""
+    return _sort_users_by_label(User.query.filter(User.role == 'giaovien').all())
 
 
 def parse_date_arg(raw_value, default=None):
@@ -335,7 +343,7 @@ def get_teacher_attendance_map(target_date):
 
 def save_teacher_attendance(target_date, present_ids, late_ids, actor_id):
     """Lưu điểm danh giáo viên cho 1 ngày. present_ids / late_ids là 2 tập độc lập."""
-    teachers = get_teacher_users()
+    teachers = get_attendance_teachers()
     existing = get_teacher_attendance_map(target_date)
     now = datetime.utcnow()
     changed = 0
@@ -396,7 +404,7 @@ def build_teacher_attendance_stats(start_date, end_date):
             bucket['late'] += 1
 
     stats = []
-    for teacher in get_teacher_users():
+    for teacher in get_attendance_teachers():
         bucket = per_teacher.get(teacher.id, {'present': 0, 'late': 0, 'recorded': 0})
         absent = max(0, total_days - bucket['present'])
         stats.append({
@@ -659,7 +667,7 @@ def dashboard():
 
     # --- Điểm danh giáo viên nhanh trên dashboard ---
     quick_date = parse_date_arg(request.args.get('ta_date'), current_date)
-    quick_teachers = get_teacher_users()
+    quick_teachers = get_attendance_teachers()
     quick_marks = get_teacher_attendance_map(quick_date)
     teacher_quick_rows = [{
         'id': t.id,
@@ -784,7 +792,7 @@ def teacher_attendance():
         'username': t.username,
         'is_present': bool(marks[t.id].is_present) if t.id in marks else False,
         'is_late': bool(marks[t.id].is_late) if t.id in marks else False,
-    } for t in get_teacher_users()]
+    } for t in get_attendance_teachers()]
 
     stats, total_marked_days, marked_days = build_teacher_attendance_stats(start_of_month, end_of_month)
 

@@ -128,7 +128,7 @@
                         {% for row in stats %}
                         <tr>
                             <td>{{ loop.index }}</td>
-                            <td class="fw-bold">{{ row.name }}{% if row.role == 'admin' %} <span class="badge bg-secondary align-middle">admin</span>{% endif %}</td>
+                            <td class="fw-bold">{{ row.name }}</td>
                             <td class="text-center"><span class="badge bg-success rounded-pill fs-6">{{ row.present_count }}</span></td>
                             <td class="text-center"><span class="badge bg-warning text-dark rounded-pill fs-6">{{ row.late_count }}</span></td>
                             <td class="text-center"><span class="badge bg-danger rounded-pill fs-6">{{ row.absent_count }}</span></td>
