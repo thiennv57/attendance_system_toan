@@ -309,6 +309,18 @@ class Pagination:
                 yield num
                 last = num
 
+TEACHER_ATTENDANCE_SLOTS = [
+    ('ca1', TIME_SLOT_1),
+    ('ca2', TIME_SLOT_2),
+]
+TEACHER_SLOT_LABELS = {key: label for key, label in TEACHER_ATTENDANCE_SLOTS}
+TEACHER_SLOT_SHORT_NAMES = {
+    TIME_SLOT_1: 'Ca 1',
+    TIME_SLOT_2: 'Ca 2',
+}
+TEACHER_SLOT_ORDER = {label: i for i, (_, label) in enumerate(TEACHER_ATTENDANCE_SLOTS)}
+
+
 def _sort_users_by_label(users):
     return sorted(users, key=lambda u: ((u.display_name or u.username or '').lower(), u.username or ''))
 
@@ -336,41 +348,82 @@ def parse_date_arg(raw_value, default=None):
 
 
 def get_teacher_attendance_map(target_date):
-    """Map teacher_id -> TeacherAttendance cho một ngày."""
+    """Map (teacher_id, time_slot) -> TeacherAttendance cho một ngày."""
     records = TeacherAttendance.query.filter(TeacherAttendance.date == target_date).all()
-    return {r.teacher_id: r for r in records}
+    return {(r.teacher_id, r.time_slot): r for r in records}
 
 
-def save_teacher_attendance(target_date, present_ids, late_ids, actor_id):
-    """Lưu điểm danh giáo viên cho 1 ngày. present_ids / late_ids là 2 tập độc lập."""
+def build_teacher_slot_rows(target_date):
+    """Dữ liệu dựng form điểm danh của một ngày.
+
+    Trả về (groups, late_row):
+      - groups  : mỗi ca một nhóm "có mặt" (Ca 1 / Ca 2)
+      - late_row: MỘT dòng "đi làm muộn" dùng chung cho cả ngày, không chia theo ca
+    """
+    marks = get_teacher_attendance_map(target_date)
+    teachers = get_attendance_teachers()
+
+    groups = []
+    for slot_key, slot_label in TEACHER_ATTENDANCE_SLOTS:
+        groups.append({
+            'key': slot_key,
+            'label': slot_label,
+            'teachers': [{
+                'id': t.id,
+                'name': t.label,
+                'is_present': bool(marks[(t.id, slot_label)].is_present) if (t.id, slot_label) in marks else False,
+            } for t in teachers]
+        })
+
+    late_row = [{
+        'id': t.id,
+        'name': t.label,
+        'is_late': any(
+            r.is_late for (tid, _), r in marks.items() if tid == t.id
+        ),
+    } for t in teachers]
+
+    return groups, late_row
+
+
+def save_teacher_attendance(target_date, present_by_slot, late_ids, actor_id):
+    """Lưu điểm danh giáo viên cho 1 ngày.
+
+    - present_by_slot: {slot_key: set(teacher_id)} — có mặt, tách theo từng ca.
+    - late_ids       : set(teacher_id) — đi làm muộn, tính theo NGÀY (không chia ca);
+                       cờ này được ghi lên mọi bản ghi của giáo viên đó trong ngày.
+    Ca không có giáo viên nào được tick có mặt => coi như ca đó không diễn ra, xoá bản
+    ghi của ca đó trong ngày (nếu có) để không tính nhầm thành nghỉ.
+    """
     teachers = get_attendance_teachers()
     existing = get_teacher_attendance_map(target_date)
     now = datetime.utcnow()
     changed = 0
 
-    for teacher in teachers:
-        is_present = teacher.id in present_ids
-        is_late = teacher.id in late_ids
-        record = existing.get(teacher.id)
+    for slot_key, slot_label in TEACHER_ATTENDANCE_SLOTS:
+        present_ids = present_by_slot.get(slot_key, set())
+        slot_has_data = bool(present_ids)
 
-        if record is None:
-            if not is_present and not is_late:
-                # Vẫn ghi nhận để biết ngày này đã điểm danh (giáo viên nghỉ)
-                record = TeacherAttendance(
-                    teacher_id=teacher.id, date=target_date,
-                    is_present=False, is_late=False,
-                    created_by=actor_id, created_at=now
-                )
-            else:
-                record = TeacherAttendance(
-                    teacher_id=teacher.id, date=target_date,
+        for teacher in teachers:
+            record = existing.get((teacher.id, slot_label))
+
+            if not slot_has_data:
+                if record is not None:
+                    db.session.delete(record)
+                    changed += 1
+                continue
+
+            is_present = teacher.id in present_ids
+            is_late = teacher.id in late_ids
+
+            if record is None:
+                db.session.add(TeacherAttendance(
+                    teacher_id=teacher.id, date=target_date, time_slot=slot_label,
                     is_present=is_present, is_late=is_late,
                     created_by=actor_id, created_at=now
-                )
-            db.session.add(record)
-            changed += 1
-        else:
-            if record.is_present != is_present or record.is_late != is_late:
+                ))
+                changed += 1
+            elif record.is_present != is_present or record.is_late != is_late:
                 record.is_present = is_present
                 record.is_late = is_late
                 record.update_by = actor_id
@@ -382,41 +435,86 @@ def save_teacher_attendance(target_date, present_ids, late_ids, actor_id):
 
 
 def build_teacher_attendance_stats(start_date, end_date):
-    """Thống kê số buổi đi làm / đi muộn / nghỉ của từng giáo viên trong khoảng ngày.
+    """Thống kê chuyên cần giáo viên theo CA trong khoảng ngày.
 
-    Một ngày được coi là "buổi làm việc" nếu ngày đó đã có bản ghi điểm danh giáo viên.
+    - Một (ngày, ca) được coi là ca làm việc nếu đã có bản ghi điểm danh của ca đó.
+    - Số ca đi làm  = số ca được tick có mặt.
+    - Số ca đi muộn = số ca được tick đi muộn.
+    - Số ca nghỉ    = tổng số ca đã điểm danh − số ca đi làm
+      (làm 1 ca trong ngày 2 ca => nghỉ 1 ca; nghỉ cả ngày => nghỉ đủ số ca của ngày đó).
+    - Nghỉ cả ngày  = số ngày mà giáo viên không đi làm ca nào trong các ca đã điểm danh.
     """
     records = TeacherAttendance.query.filter(
         TeacherAttendance.date >= start_date,
         TeacherAttendance.date <= end_date
     ).all()
 
-    marked_days = sorted({r.date for r in records})
+    # Các ca thực sự đã điểm danh, nhóm theo ngày
+    slots_by_day = {}
+    for r in records:
+        slots_by_day.setdefault(r.date, set()).add(r.time_slot)
+
+    marked_days = sorted(slots_by_day)
     total_days = len(marked_days)
+    total_slots = sum(len(v) for v in slots_by_day.values())
 
     per_teacher = {}
+    present_slots_by_day = {}  # (teacher_id, date) -> set(ca đã đi làm)
+    late_days = {}             # teacher_id -> set(ngày đi làm muộn)
     for r in records:
-        bucket = per_teacher.setdefault(r.teacher_id, {'present': 0, 'late': 0, 'recorded': 0})
-        bucket['recorded'] += 1
+        bucket = per_teacher.setdefault(r.teacher_id, {'present': 0})
         if r.is_present:
             bucket['present'] += 1
+            present_slots_by_day.setdefault((r.teacher_id, r.date), set()).add(r.time_slot)
         if r.is_late:
-            bucket['late'] += 1
+            late_days.setdefault(r.teacher_id, set()).add(r.date)
+
+    def slot_short(label):
+        return TEACHER_SLOT_SHORT_NAMES.get(label, label)
 
     stats = []
     for teacher in get_attendance_teachers():
-        bucket = per_teacher.get(teacher.id, {'present': 0, 'late': 0, 'recorded': 0})
-        absent = max(0, total_days - bucket['present'])
+        bucket = per_teacher.get(teacher.id, {'present': 0})
+        absent_slots = max(0, total_slots - bucket['present'])
+        teacher_late_days = sorted(late_days.get(teacher.id, set()))
+
+        # Chi tiết từng ngày nghỉ: cả ngày / chỉ Ca 1 / chỉ Ca 2
+        absent_days = []
+        full_day_off = 0
+        for day in marked_days:
+            day_slots = slots_by_day[day]
+            attended = present_slots_by_day.get((teacher.id, day), set())
+            missing = day_slots - attended
+            if not missing:
+                continue
+            if not attended:
+                full_day_off += 1
+                kind, text = 'full', 'Cả ngày'
+            else:
+                kind = 'slot'
+                text = ', '.join(
+                    slot_short(sl) for sl in sorted(missing, key=lambda x: TEACHER_SLOT_ORDER.get(x, 99))
+                )
+            absent_days.append({
+                'date': day,
+                'date_text': day.strftime('%d/%m'),
+                'kind': kind,
+                'text': text,
+            })
+
         stats.append({
             'id': teacher.id,
             'name': teacher.label,
             'username': teacher.username,
             'role': teacher.role,
             'present_count': bucket['present'],
-            'late_count': bucket['late'],
-            'absent_count': absent,
+            'late_count': len(teacher_late_days),
+            'late_days': [{'date': d, 'date_text': d.strftime('%d/%m')} for d in teacher_late_days],
+            'absent_count': absent_slots,
+            'full_day_off_count': full_day_off,
+            'absent_days': absent_days,
         })
-    return stats, total_days, marked_days
+    return stats, total_slots, total_days, marked_days
 
 
 def admin_required(f):
@@ -667,14 +765,8 @@ def dashboard():
 
     # --- Điểm danh giáo viên nhanh trên dashboard ---
     quick_date = parse_date_arg(request.args.get('ta_date'), current_date)
-    quick_teachers = get_attendance_teachers()
-    quick_marks = get_teacher_attendance_map(quick_date)
-    teacher_quick_rows = [{
-        'id': t.id,
-        'name': t.label,
-        'is_present': bool(quick_marks[t.id].is_present) if t.id in quick_marks else False,
-        'is_late': bool(quick_marks[t.id].is_late) if t.id in quick_marks else False,
-    } for t in quick_teachers]
+    teacher_quick_groups, teacher_quick_late_row = build_teacher_slot_rows(quick_date)
+    has_teacher_accounts = bool(get_attendance_teachers())
 
     return render_template('dashboard.html',
                            students=paginated_data,
@@ -686,7 +778,9 @@ def dashboard():
                            selected_year=selected_year,
                            months=months,
                            years=years,
-                           teacher_quick_rows=teacher_quick_rows,
+                           teacher_quick_groups=teacher_quick_groups,
+                           teacher_quick_late_row=teacher_quick_late_row,
+                           has_teacher_accounts=has_teacher_accounts,
                            teacher_quick_date=quick_date.strftime('%Y-%m-%d'),
                            current_url=build_current_url())
 
@@ -785,24 +879,22 @@ def teacher_attendance():
     last_day = calendar.monthrange(selected_year, selected_month)[1]
     end_of_month = date(selected_year, selected_month, last_day)
 
-    marks = get_teacher_attendance_map(selected_date)
-    teacher_rows = [{
-        'id': t.id,
-        'name': t.label,
-        'username': t.username,
-        'is_present': bool(marks[t.id].is_present) if t.id in marks else False,
-        'is_late': bool(marks[t.id].is_late) if t.id in marks else False,
-    } for t in get_attendance_teachers()]
+    teacher_groups, teacher_late_row = build_teacher_slot_rows(selected_date)
+    has_teacher_accounts = bool(get_attendance_teachers())
 
-    stats, total_marked_days, marked_days = build_teacher_attendance_stats(start_of_month, end_of_month)
+    stats, total_marked_slots, total_marked_days, marked_days = build_teacher_attendance_stats(
+        start_of_month, end_of_month)
 
     months = [{'value': i, 'name': f'Tháng {i}'} for i in range(1, 13)]
     years = range(today.year + 1, 2022, -1)
 
     return render_template('teacher_attendance.html',
                            selected_date=selected_date.strftime('%Y-%m-%d'),
-                           teacher_rows=teacher_rows,
+                           teacher_groups=teacher_groups,
+                           teacher_late_row=teacher_late_row,
+                           has_teacher_accounts=has_teacher_accounts,
                            stats=stats,
+                           total_marked_slots=total_marked_slots,
                            total_marked_days=total_marked_days,
                            marked_days=marked_days,
                            start_date=start_of_month,
@@ -832,10 +924,13 @@ def save_teacher_attendance_route():
                 continue
         return result
 
-    present_ids = to_int_set(request.form.getlist('present_teacher_ids'))
+    present_by_slot = {
+        slot_key: to_int_set(request.form.getlist(f'present_{slot_key}'))
+        for slot_key, _ in TEACHER_ATTENDANCE_SLOTS
+    }
     late_ids = to_int_set(request.form.getlist('late_teacher_ids'))
 
-    save_teacher_attendance(target_date, present_ids, late_ids, current_user.id)
+    save_teacher_attendance(target_date, present_by_slot, late_ids, current_user.id)
     flash(f"Đã lưu điểm danh giáo viên ngày {target_date.strftime('%d/%m/%Y')}.", 'success')
     return redirect_back('teacher_attendance', date=target_date.strftime('%Y-%m-%d'))
 

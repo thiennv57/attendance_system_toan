@@ -121,18 +121,20 @@ class TestScore(db.Model):
 
 
 class TeacherAttendance(db.Model):
-    """Điểm danh giáo viên theo ngày.
+    """Điểm danh giáo viên theo từng CA của một ngày.
 
-    Hai trường is_present / is_late độc lập nhau (2 dòng điểm danh độc lập trên giao diện):
-      - is_present: giáo viên có mặt / đi làm
-      - is_late   : giáo viên đi làm muộn
-    Giáo viên không được tick ở cả hai dòng trong một ngày đã điểm danh => tính là nghỉ.
+    Mỗi bản ghi = (giáo viên, ngày, ca). Hai trường is_present / is_late độc lập nhau
+    (2 dòng điểm danh độc lập trên giao diện của mỗi ca):
+      - is_present: giáo viên có mặt / đi làm ca đó
+      - is_late   : giáo viên đi làm muộn ca đó
+    Ca đã điểm danh mà giáo viên không được tick có mặt => tính là nghỉ ca đó.
     """
     __tablename__ = 'teacher_attendance'
     __bind_key__ = 'attendance'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
+    time_slot = db.Column(db.String(50), nullable=False)
     is_present = db.Column(db.Boolean, default=False, nullable=False)
     is_late = db.Column(db.Boolean, default=False, nullable=False)
     note = db.Column(db.Text, nullable=True)
@@ -145,7 +147,7 @@ class TeacherAttendance(db.Model):
     created_by_user = db.relationship('User', foreign_keys=[created_by])
     update_by_user = db.relationship('User', foreign_keys=[update_by])
 
-    __table_args__ = (db.UniqueConstraint('teacher_id', 'date', name='_teacher_attendance_date_uc'),)
+    __table_args__ = (db.UniqueConstraint('teacher_id', 'date', 'time_slot', name='_teacher_attendance_slot_uc'),)
 
 
 class TeacherStudentAssignment(db.Model):
