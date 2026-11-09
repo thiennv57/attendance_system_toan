@@ -1559,7 +1559,7 @@ def take_attendance():
     selected_slot = request.args.get('slot', '')
     time_slot = selected_slot # Initialize time_slot for GET requests
     recorded_by_filter = request.args.get('recorded_by_filter', '')
-    available_users = User.query.filter(User.role.in_(['admin', 'giaovien'])).order_by(User.username.asc()).all()
+    available_users = get_teacher_users()
     # selected_grade = request.args.get('grade', '') # Removed grade filter
     search_query = request.args.get('search_query', '') # Truyền search_query vào template
     # Normalize the search query for diacritic-insensitive comparison
@@ -1745,16 +1745,18 @@ def take_attendance():
 
         existing_attendance_map = {}
         for record in all_attendance_records_for_slot:
-            recorded_by = (
-                record.update_by_user.username if record.status == 'present' and record.update_by_user
-                else record.created_by_user.username if record.status == 'present' and record.created_by_user
-                else ''
+            recorder_user = (
+                (record.update_by_user or record.created_by_user)
+                if record.status == 'present' else None
             )
+            # Hiển thị theo tên hiển thị của tài khoản (fallback về username nếu chưa đặt)
+            recorded_by = recorder_user.label if recorder_user else ''
+            recorder_id = recorder_user.id if recorder_user else None
             existing_attendance_map[record.student_id] = {
                 'status': record.status,
                 'recorded_by': recorded_by,
                 'is_checked': record.status == 'present',
-                'is_locked': record.status == 'present' and recorded_by not in ['', current_user.username]
+                'is_locked': record.status == 'present' and recorder_id not in (None, current_user.id)
             }
 
         # Update attendance map with existing records
@@ -2062,8 +2064,8 @@ def attendance_history():
     User_updater = aliased(User)
     attendance_query = db.session.query(
             Attendance,
-            User.username.label('created_by_username'),
-            User_updater.username.label('updated_by_username')
+            func.coalesce(func.nullif(func.trim(User.display_name), ''), User.username).label('created_by_username'),
+            func.coalesce(func.nullif(func.trim(User_updater.display_name), ''), User_updater.username).label('updated_by_username')
         )\
         .outerjoin(User, Attendance.created_by == User.id)\
         .outerjoin(User_updater, Attendance.update_by == User_updater.id)
