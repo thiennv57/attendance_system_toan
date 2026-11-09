@@ -56,7 +56,21 @@
         <input type="hidden" name="present_student_ids" id="present_student_ids" value="">
         <input type="hidden" name="visible_student_ids" id="visible_student_ids" value="">
 
-        <h4 class="mb-3">Học sinh cho ngày {{ date }} - {{ selected_slot }}</h4>
+        <h4 class="mb-2">Học sinh cho ngày {{ date }} - {{ selected_slot }}</h4>
+
+        {% if current_user.role == 'admin' %}
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+            <span class="badge bg-primary">
+                <i class="fas fa-user-group me-1"></i>Đăng ký: {{ slot_registered_count }}
+            </span>
+            <span class="badge bg-success">
+                <i class="fas fa-user-check me-1"></i>Có mặt: {{ slot_present_count }}{% if slot_makeup_count %} (Đi bù {{ slot_makeup_count }}){% endif %}
+            </span>
+            <span class="badge bg-danger">
+                <i class="fas fa-user-xmark me-1"></i>Vắng: {{ slot_absent_count }}
+            </span>
+        </div>
+        {% endif %}
 
         {% if recorder_present_counts %}
         <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">

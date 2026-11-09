@@ -767,6 +767,7 @@ def dashboard():
     quick_date = parse_date_arg(request.args.get('ta_date'), current_date)
     teacher_quick_groups, teacher_quick_late_row = build_teacher_slot_rows(quick_date)
     has_teacher_accounts = bool(get_attendance_teachers())
+    can_edit_teacher_attendance = current_user.role == 'admin'
 
     return render_template('dashboard.html',
                            students=paginated_data,
@@ -780,6 +781,7 @@ def dashboard():
                            years=years,
                            teacher_quick_groups=teacher_quick_groups,
                            teacher_quick_late_row=teacher_quick_late_row,
+                           can_edit_teacher_attendance=can_edit_teacher_attendance,
                            has_teacher_accounts=has_teacher_accounts,
                            teacher_quick_date=quick_date.strftime('%Y-%m-%d'),
                            current_url=build_current_url())
@@ -881,6 +883,7 @@ def teacher_attendance():
 
     teacher_groups, teacher_late_row = build_teacher_slot_rows(selected_date)
     has_teacher_accounts = bool(get_attendance_teachers())
+    can_edit_teacher_attendance = current_user.role == 'admin'
 
     stats, total_marked_slots, total_marked_days, marked_days = build_teacher_attendance_stats(
         start_of_month, end_of_month)
@@ -892,6 +895,7 @@ def teacher_attendance():
                            selected_date=selected_date.strftime('%Y-%m-%d'),
                            teacher_groups=teacher_groups,
                            teacher_late_row=teacher_late_row,
+                           can_edit_teacher_attendance=can_edit_teacher_attendance,
                            has_teacher_accounts=has_teacher_accounts,
                            stats=stats,
                            total_marked_slots=total_marked_slots,
@@ -909,8 +913,8 @@ def teacher_attendance():
 @app.route('/teacher_attendance/save', methods=['POST'])
 @login_required
 def save_teacher_attendance_route():
-    if current_user.role not in ['admin', 'giaovien']:
-        flash('Bạn không có quyền điểm danh giáo viên.', 'danger')
+    if current_user.role != 'admin':
+        flash('Bạn chỉ có quyền xem điểm danh giáo viên, không được cập nhật.', 'danger')
         abort(403)
 
     target_date = parse_date_arg(request.form.get('date'))
@@ -1676,6 +1680,10 @@ def take_attendance():
     student_slots_for_day = {}
     total_students_in_slot = 0
     total_students_displayed = 0
+    slot_registered_count = 0
+    slot_present_count = 0
+    slot_makeup_count = 0
+    slot_absent_count = 0
 
     if request.method == 'POST':
         date_str = request.form.get('date')
@@ -1878,6 +1886,23 @@ def take_attendance():
         total_students_in_slot = len(students_on_schedule)
         total_students_displayed = len(students_to_display)
 
+        # ---- Thống kê của ca đang xem ----
+        # Đăng ký  : học sinh có lịch học ca này (không tính học bù)
+        # Có mặt   : tổng số có mặt, gồm cả học sinh học bù
+        # Đi bù    : trong số có mặt, bao nhiêu em không thuộc lịch ca này
+        # Vắng     : học sinh đăng ký nhưng không có mặt
+        scheduled_id_set = set(scheduled_student_ids)
+        slot_registered_count = len(scheduled_id_set)
+        slot_present_count = 0
+        slot_makeup_count = 0
+        for st in students_to_display:
+            if existing_attendance_map.get(st.id, {}).get('status') != 'present':
+                continue
+            slot_present_count += 1
+            if st.id not in scheduled_id_set:
+                slot_makeup_count += 1
+        slot_absent_count = max(0, slot_registered_count - (slot_present_count - slot_makeup_count))
+
         if all_student_ids_for_display:
             # Sắp xếp học sinh theo khối lớp và từ cuối cùng của tên
             students_to_display.sort(key=lambda s: (
@@ -1928,6 +1953,10 @@ def take_attendance():
                          recorded_by_filter=recorded_by_filter,
                          total_students_in_slot=total_students_in_slot,
                          total_students_displayed=total_students_displayed,
+                         slot_registered_count=slot_registered_count,
+                         slot_present_count=slot_present_count,
+                         slot_makeup_count=slot_makeup_count,
+                         slot_absent_count=slot_absent_count,
                          student_slots_for_day=student_slots_for_day,
                          recorder_colors=recorder_colors,
                          recorder_present_counts=recorder_present_counts,

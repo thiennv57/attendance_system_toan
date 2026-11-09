@@ -50,7 +50,8 @@
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" name="present_{{ group.key }}"
                                                    value="{{ t.id }}" id="{{ group.key }}_present_{{ t.id }}"
-                                                   {% if t.is_present %}checked{% endif %}>
+                                                   {% if t.is_present %}checked{% endif %}
+                                                   {% if not can_edit_teacher_attendance %}disabled{% endif %}>
                                             <label class="form-check-label" for="{{ group.key }}_present_{{ t.id }}">{{ t.name }}</label>
                                         </div>
                                         {% endfor %}
@@ -71,7 +72,8 @@
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" name="late_teacher_ids"
                                                    value="{{ t.id }}" id="late_{{ t.id }}"
-                                                   {% if t.is_late %}checked{% endif %}>
+                                                   {% if t.is_late %}checked{% endif %}
+                                                   {% if not can_edit_teacher_attendance %}disabled{% endif %}>
                                             <label class="form-check-label" for="late_{{ t.id }}">{{ t.name }}</label>
                                         </div>
                                         {% endfor %}
@@ -87,9 +89,15 @@
                     <li>Ca không tick giáo viên nào được hiểu là <strong>ca đó không dạy</strong>, không tính vào thống kê.</li>
                 </ul>
 
+                {% if can_edit_teacher_attendance %}
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-floppy-disk me-2"></i>Lưu thông tin
                 </button>
+                {% else %}
+                <div class="alert alert-secondary py-2 small mb-0">
+                    <i class="fas fa-lock me-1"></i>Bạn chỉ có quyền xem. Chỉ quản trị viên mới cập nhật được điểm danh giáo viên.
+                </div>
+                {% endif %}
             </form>
             {% else %}
             <p class="text-muted mb-0">Chưa có tài khoản giáo viên nào.</p>
