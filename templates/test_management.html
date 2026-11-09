@@ -72,7 +72,7 @@
                     </td>
                     <td>{{ exam.grade }}</td>
                     <td>{{ student_counts.get(exam.id, 0) }}</td>
-                    <td>{{ exam.created_by_user.username if exam.created_by_user else 'N/A' }}</td>
+                    <td>{{ exam.created_by_user.label if exam.created_by_user else 'N/A' }}</td>
                     <td>{{ exam.created_at.strftime('%d-%m-%Y %H:%M') if exam.created_at else '' }}</td>
                     <td>
                         <a href="{{ url_for('manage_test_exam', exam_id=exam.id) }}" class="btn btn-primary btn-sm"><i class="fas fa-pen-to-square me-1"></i>Nhập điểm</a>

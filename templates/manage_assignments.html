@@ -24,7 +24,7 @@
                 <select name="teacher_id" id="teacher_filter" class="form-control">
                     <option value="">-- Lọc theo giáo viên --</option>
                     {% for teacher in teachers %}
-                    <option value="{{ teacher.id }}" {% if teacher.id == selected_teacher_id %}selected{% endif %}>{{ teacher.username }}</option>
+                    <option value="{{ teacher.id }}" {% if teacher.id == selected_teacher_id %}selected{% endif %}>{{ teacher.label }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -74,7 +74,7 @@
                             <select name="assigned_teacher_{{ student.id }}" class="form-control teacher-assignment-dropdown" data-student-id="{{ student.id }}">
                                 <option value="">-- Chọn Giáo viên --</option>
                                 {% for teacher in teachers %}
-                                <option value="{{ teacher.id }}" {% if student.id in student_to_teacher_map and student_to_teacher_map[student.id] == teacher.id %}selected{% endif %}>{{ teacher.username }}</option>
+                                <option value="{{ teacher.id }}" {% if student.id in student_to_teacher_map and student_to_teacher_map[student.id] == teacher.id %}selected{% endif %}>{{ teacher.label }}</option>
                                 {% endfor %}
                             </select>
                         </td>
@@ -128,7 +128,7 @@
         <tbody>
             {% for teacher in teachers %}
             <tr>
-                <td>{{ teacher.username }}</td>
+                <td>{{ teacher.label }}</td>
                 <td>
                     {% if assigned_students_map[teacher.id] %}
                         {% for student_id in assigned_students_map[teacher.id] %}

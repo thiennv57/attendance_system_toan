@@ -46,7 +46,7 @@
                     <select id="recorded_by" name="recorded_by_filter" class="form-select">
                         <option value="">Tất cả</option>
                         {% for user in available_users %}
-                        <option value="{{ user.id }}" {% if user.id == recorded_by_filter|int %}selected{% endif %}>{{ user.username }}</option>
+                        <option value="{{ user.id }}" {% if user.id == recorded_by_filter|int %}selected{% endif %}>{{ user.label }}</option>
                         {% endfor %}
                     </select>
                 </div>

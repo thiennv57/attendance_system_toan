@@ -100,7 +100,7 @@
                         <td style="min-width: 280px;">
                             <textarea name="comment_{{ result.id }}" rows="2" class="form-control">{{ result.comment or '' }}</textarea>
                         </td>
-                        <td>{{ result.graded_by_user.username if result.graded_by_user else 'Chưa có' }}</td>
+                        <td>{{ result.graded_by_user.label if result.graded_by_user else 'Chưa có' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

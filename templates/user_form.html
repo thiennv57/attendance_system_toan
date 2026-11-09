@@ -16,6 +16,11 @@
             <input type="text" class="form-control" id="username" name="username" value="{{ user.username if user else '' }}" required>
         </div>
         <div class="form-group">
+            <label for="display_name">Tên hiển thị (tên giáo viên)</label>
+            <input type="text" class="form-control" id="display_name" name="display_name" value="{{ user.display_name if user and user.display_name else '' }}" placeholder="Ví dụ: Cô Nguyễn Thị Phượng">
+            <small class="form-text text-muted">Tên này hiển thị trên các màn hình điểm danh và thống kê. Để trống sẽ dùng tên đăng nhập.</small>
+        </div>
+        <div class="form-group">
             <label for="password">Mật khẩu (để trống nếu không muốn thay đổi)</label>
             <input type="password" class="form-control" id="password" name="password">
         </div>

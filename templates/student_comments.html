@@ -42,7 +42,7 @@
                             <span class="text-muted">Chưa có nhận xét</span>
                         {% endif %}
                     </td>
-                    <td>{{ attendance.update_by_user.username if attendance.update_by_user else attendance.created_by_user.username }}</td>
+                    <td>{{ attendance.update_by_user.label if attendance.update_by_user else attendance.created_by_user.label }}</td>
                     <td>{{ attendance.updated_at.strftime('%d-%m-%Y %H:%M') if attendance.updated_at else attendance.created_at.strftime('%d-%m-%Y %H:%M') }}</td>
                     <td>
                         <button type="button" class="btn btn-warning btn-sm edit-comment-btn" 

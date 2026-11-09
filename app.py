@@ -26,7 +26,7 @@ import io
 import csv
 from urllib.parse import urlsplit
 
-from models import db, User, Student, Schedule, Attendance, Tuition, TeacherStudentAssignment, TestExam, TestScore
+from models import db, User, Student, Schedule, Attendance, Tuition, TeacherStudentAssignment, TestExam, TestScore, TeacherAttendance
 from utils import import_excel_data, get_students_for_slot, remove_diacritics
 
 TIME_SLOT_1 = 'Ca 1: 18h -19h30'
@@ -309,6 +309,108 @@ class Pagination:
                 yield num
                 last = num
 
+def get_teacher_users():
+    """Danh sách tài khoản được điểm danh (giáo viên + admin), sắp theo tên hiển thị."""
+    users = User.query.filter(User.role.in_(['admin', 'giaovien'])).all()
+    return sorted(users, key=lambda u: ((u.display_name or u.username or '').lower(), u.username or ''))
+
+
+def parse_date_arg(raw_value, default=None):
+    """Chuyển chuỗi yyyy-mm-dd thành date; trả về default (mặc định hôm nay) nếu không hợp lệ."""
+    if default is None:
+        default = datetime.now().date()
+    if not raw_value:
+        return default
+    try:
+        return datetime.strptime(raw_value, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return default
+
+
+def get_teacher_attendance_map(target_date):
+    """Map teacher_id -> TeacherAttendance cho một ngày."""
+    records = TeacherAttendance.query.filter(TeacherAttendance.date == target_date).all()
+    return {r.teacher_id: r for r in records}
+
+
+def save_teacher_attendance(target_date, present_ids, late_ids, actor_id):
+    """Lưu điểm danh giáo viên cho 1 ngày. present_ids / late_ids là 2 tập độc lập."""
+    teachers = get_teacher_users()
+    existing = get_teacher_attendance_map(target_date)
+    now = datetime.utcnow()
+    changed = 0
+
+    for teacher in teachers:
+        is_present = teacher.id in present_ids
+        is_late = teacher.id in late_ids
+        record = existing.get(teacher.id)
+
+        if record is None:
+            if not is_present and not is_late:
+                # Vẫn ghi nhận để biết ngày này đã điểm danh (giáo viên nghỉ)
+                record = TeacherAttendance(
+                    teacher_id=teacher.id, date=target_date,
+                    is_present=False, is_late=False,
+                    created_by=actor_id, created_at=now
+                )
+            else:
+                record = TeacherAttendance(
+                    teacher_id=teacher.id, date=target_date,
+                    is_present=is_present, is_late=is_late,
+                    created_by=actor_id, created_at=now
+                )
+            db.session.add(record)
+            changed += 1
+        else:
+            if record.is_present != is_present or record.is_late != is_late:
+                record.is_present = is_present
+                record.is_late = is_late
+                record.update_by = actor_id
+                record.updated_at = now
+                changed += 1
+
+    db.session.commit()
+    return changed
+
+
+def build_teacher_attendance_stats(start_date, end_date):
+    """Thống kê số buổi đi làm / đi muộn / nghỉ của từng giáo viên trong khoảng ngày.
+
+    Một ngày được coi là "buổi làm việc" nếu ngày đó đã có bản ghi điểm danh giáo viên.
+    """
+    records = TeacherAttendance.query.filter(
+        TeacherAttendance.date >= start_date,
+        TeacherAttendance.date <= end_date
+    ).all()
+
+    marked_days = sorted({r.date for r in records})
+    total_days = len(marked_days)
+
+    per_teacher = {}
+    for r in records:
+        bucket = per_teacher.setdefault(r.teacher_id, {'present': 0, 'late': 0, 'recorded': 0})
+        bucket['recorded'] += 1
+        if r.is_present:
+            bucket['present'] += 1
+        if r.is_late:
+            bucket['late'] += 1
+
+    stats = []
+    for teacher in get_teacher_users():
+        bucket = per_teacher.get(teacher.id, {'present': 0, 'late': 0, 'recorded': 0})
+        absent = max(0, total_days - bucket['present'])
+        stats.append({
+            'id': teacher.id,
+            'name': teacher.label,
+            'username': teacher.username,
+            'role': teacher.role,
+            'present_count': bucket['present'],
+            'late_count': bucket['late'],
+            'absent_count': absent,
+        })
+    return stats, total_days, marked_days
+
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -555,6 +657,17 @@ def dashboard():
     # Create years list from current year down to 2023
     years = range(current_date.year, 2022, -1)
 
+    # --- Điểm danh giáo viên nhanh trên dashboard ---
+    quick_date = parse_date_arg(request.args.get('ta_date'), current_date)
+    quick_teachers = get_teacher_users()
+    quick_marks = get_teacher_attendance_map(quick_date)
+    teacher_quick_rows = [{
+        'id': t.id,
+        'name': t.label,
+        'is_present': bool(quick_marks[t.id].is_present) if t.id in quick_marks else False,
+        'is_late': bool(quick_marks[t.id].is_late) if t.id in quick_marks else False,
+    } for t in quick_teachers]
+
     return render_template('dashboard.html',
                            students=paginated_data,
                            pagination=pagination,
@@ -564,7 +677,10 @@ def dashboard():
                            selected_month=selected_month,
                            selected_year=selected_year,
                            months=months,
-                           years=years)
+                           years=years,
+                           teacher_quick_rows=teacher_quick_rows,
+                           teacher_quick_date=quick_date.strftime('%Y-%m-%d'),
+                           current_url=build_current_url())
 
 @app.route('/logout')
 @login_required
@@ -592,12 +708,13 @@ def add_user():
         username = request.form['username']
         password = request.form['password']
         role = request.form['role']
+        display_name = (request.form.get('display_name') or '').strip() or None
 
         if db.session.query(User).filter_by(username=username).first():
             flash('Tên đăng nhập đã tồn tại.', 'danger')
             return redirect(url_for('add_user'))
 
-        new_user = User(username=username, password=generate_password_hash(password), role=role, is_admin=(role == 'admin'))
+        new_user = User(username=username, display_name=display_name, password=generate_password_hash(password), role=role, is_admin=(role == 'admin'))
         db.session.add(new_user)
         db.session.commit()
         flash(f'Người dùng {username} đã được thêm thành công.', 'success')
@@ -614,9 +731,11 @@ def edit_user(user_id):
     user = db.session.query(User).get_or_404(user_id)
     if request.method == 'POST':
         user.username = request.form['username']
+        user.display_name = (request.form.get('display_name') or '').strip() or None
         if 'password' in request.form and request.form['password']:
             user.password = generate_password_hash(request.form['password'])
         user.role = request.form['role']
+        user.is_admin = (user.role == 'admin')
         db.session.commit()
         flash(f'Người dùng {user.username} đã được cập nhật thành công.', 'success')
         return redirect(url_for('users'))
@@ -636,6 +755,82 @@ def delete_user(user_id):
     db.session.commit()
     flash(f'Người dùng {user.username} đã được xóa.', 'success')
     return redirect(url_for('users'))
+
+# ---------------------------------------------------------------------------
+# Điểm danh giáo viên
+# ---------------------------------------------------------------------------
+@app.route('/teacher_attendance', methods=['GET'])
+@login_required
+def teacher_attendance():
+    today = datetime.now().date()
+    selected_date = parse_date_arg(request.args.get('date'), today)
+
+    try:
+        selected_month = int(request.args.get('month', selected_date.month))
+        selected_year = int(request.args.get('year', selected_date.year))
+    except (TypeError, ValueError):
+        selected_month, selected_year = selected_date.month, selected_date.year
+    if not (1 <= selected_month <= 12):
+        selected_month = selected_date.month
+
+    start_of_month = date(selected_year, selected_month, 1)
+    last_day = calendar.monthrange(selected_year, selected_month)[1]
+    end_of_month = date(selected_year, selected_month, last_day)
+
+    marks = get_teacher_attendance_map(selected_date)
+    teacher_rows = [{
+        'id': t.id,
+        'name': t.label,
+        'username': t.username,
+        'is_present': bool(marks[t.id].is_present) if t.id in marks else False,
+        'is_late': bool(marks[t.id].is_late) if t.id in marks else False,
+    } for t in get_teacher_users()]
+
+    stats, total_marked_days, marked_days = build_teacher_attendance_stats(start_of_month, end_of_month)
+
+    months = [{'value': i, 'name': f'Tháng {i}'} for i in range(1, 13)]
+    years = range(today.year + 1, 2022, -1)
+
+    return render_template('teacher_attendance.html',
+                           selected_date=selected_date.strftime('%Y-%m-%d'),
+                           teacher_rows=teacher_rows,
+                           stats=stats,
+                           total_marked_days=total_marked_days,
+                           marked_days=marked_days,
+                           start_date=start_of_month,
+                           end_date=end_of_month,
+                           selected_month=selected_month,
+                           selected_year=selected_year,
+                           months=months,
+                           years=years,
+                           current_url=build_current_url())
+
+
+@app.route('/teacher_attendance/save', methods=['POST'])
+@login_required
+def save_teacher_attendance_route():
+    if current_user.role not in ['admin', 'giaovien']:
+        flash('Bạn không có quyền điểm danh giáo viên.', 'danger')
+        abort(403)
+
+    target_date = parse_date_arg(request.form.get('date'))
+
+    def to_int_set(values):
+        result = set()
+        for v in values:
+            try:
+                result.add(int(v))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    present_ids = to_int_set(request.form.getlist('present_teacher_ids'))
+    late_ids = to_int_set(request.form.getlist('late_teacher_ids'))
+
+    save_teacher_attendance(target_date, present_ids, late_ids, current_user.id)
+    flash(f"Đã lưu điểm danh giáo viên ngày {target_date.strftime('%d/%m/%Y')}.", 'success')
+    return redirect_back('teacher_attendance', date=target_date.strftime('%Y-%m-%d'))
+
 
 # Student management routes (Admin only)
 def sort_students_by_grade_and_name(students_list):

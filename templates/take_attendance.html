@@ -30,7 +30,7 @@
                         <option value="">Tất cả</option>
                         {% for user in available_users %}
                         <option value="{{ user.id }}" {% if recorded_by_filter|string == user.id|string %}selected{% endif %}>
-                            {{ user.username }}
+                            {{ user.label }}
                         </option>
                         {% endfor %}
                     </select>

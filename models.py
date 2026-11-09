@@ -9,9 +9,15 @@ class User(UserMixin, db.Model):
     __bind_key__ = 'attendance'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    display_name = db.Column(db.String(120), nullable=True)  # Tên hiển thị của giáo viên / tài khoản
     password = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), default='giaovien', nullable=False) # Đảm bảo trường 'role' tồn tại
     is_admin = db.Column(db.Boolean, default=False)
+
+    @property
+    def label(self):
+        """Tên dùng để hiển thị trên giao diện: ưu tiên display_name, fallback username."""
+        return (self.display_name or '').strip() or self.username
 
 class Student(db.Model):
     __tablename__ = 'student'
@@ -112,6 +118,34 @@ class TestScore(db.Model):
 
     __table_args__ = (db.UniqueConstraint('test_exam_id', 'student_id', 'attempt_number', name='_test_exam_student_attempt_uc'),)
 
+
+
+class TeacherAttendance(db.Model):
+    """Điểm danh giáo viên theo ngày.
+
+    Hai trường is_present / is_late độc lập nhau (2 dòng điểm danh độc lập trên giao diện):
+      - is_present: giáo viên có mặt / đi làm
+      - is_late   : giáo viên đi làm muộn
+    Giáo viên không được tick ở cả hai dòng trong một ngày đã điểm danh => tính là nghỉ.
+    """
+    __tablename__ = 'teacher_attendance'
+    __bind_key__ = 'attendance'
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    is_present = db.Column(db.Boolean, default=False, nullable=False)
+    is_late = db.Column(db.Boolean, default=False, nullable=False)
+    note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+    update_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    teacher = db.relationship('User', foreign_keys=[teacher_id], backref='teacher_attendances')
+    created_by_user = db.relationship('User', foreign_keys=[created_by])
+    update_by_user = db.relationship('User', foreign_keys=[update_by])
+
+    __table_args__ = (db.UniqueConstraint('teacher_id', 'date', name='_teacher_attendance_date_uc'),)
 
 
 class TeacherStudentAssignment(db.Model):
