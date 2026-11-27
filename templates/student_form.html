@@ -87,13 +87,18 @@
                 <h3 class="mt-4 mb-3">Thông tin Lịch học</h3>
                 <p>Chọn ca học cho mỗi ngày trong tuần:</p>
                 {% set days_of_week = {2: 'Thứ Hai', 3: 'Thứ Ba', 4: 'Thứ Tư', 5: 'Thứ Năm', 6: 'Thứ Sáu', 7: 'Thứ Bảy'} %}
-                {% set time_slots = [
+                {% set base_time_slots = [
                     {'value': 'Ca 1: 18h -19h30', 'label': 'Ca 1: 18h -19h30'},
                     {'value': 'Ca 2: 19h30 - 21h', 'label': 'Ca 2: 19h30 - 21h'},
-                    {'value': '__double_slot__', 'label': 'Cả 2 ca'}
+                    {'value': '__double_slot__', 'label': 'Cả 2 ca (tối)'}
+                ] %}
+                {# Ca chiều chỉ mở cho Thứ Bảy (day_num = 7) #}
+                {% set saturday_only_slots = [
+                    {'value': 'Ca chiều: 14h30 - 16h', 'label': 'Ca chiều: 14h30 - 16h'}
                 ] %}
 
                 {% for day_num, day_name in days_of_week.items() %}
+                {% set time_slots = (saturday_only_slots + base_time_slots) if day_num == 7 else base_time_slots %}
                 {% set day_schedules = student.schedules | selectattr('day_of_week', 'equalto', day_num) | list if student and student.schedules else [] %}
                 {% set day_slots = day_schedules | map(attribute='time_slot') | list %}
                 {% set has_slot_1 = 'Ca 1: 18h -19h30' in day_slots %}

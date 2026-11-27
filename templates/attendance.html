@@ -14,8 +14,11 @@
                 <label for="slot" class="form-label">Ca học:</label>
                 <select id="slot" name="slot" class="form-select">
                     <option value="">Chọn ca học</option>
-                    <option value="Ca 1: 18h -19h30" {% if selected_slot == 'Ca 1: 18h -19h30' %}selected{% endif %}>Ca 1: 18h -19h30</option>
-                    <option value="Ca 2: 19h30 - 21h" {% if selected_slot == 'Ca 2: 19h30 - 21h' %}selected{% endif %}>Ca 2: 19h30 - 21h</option>
+                    {% for slot in slot_options %}
+                    <option value="{{ slot.value }}"
+                            {% if slot.day_only %}data-day-only="{{ slot.day_only }}"{% endif %}
+                            {% if selected_slot == slot.value %}selected{% endif %}>{{ slot.label }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-4">
@@ -124,4 +127,42 @@
         {% endif %}
     </div>
 </div>
+<script>
+// Ẩn/hiện ca học theo ngày được chọn: ca có data-day-only chỉ hiện đúng thứ đó.
+// Quy ước day-only: 2 = Thứ Hai ... 7 = Thứ Bảy (trùng Schedule.day_of_week).
+(function () {
+    var dateInput = document.getElementById('date');
+    var slotSelect = document.getElementById('slot');
+    if (!dateInput || !slotSelect) { return; }
+
+    function scheduleDayOf(value) {
+        if (!value) { return null; }
+        var parts = value.split('-');
+        if (parts.length !== 3) { return null; }
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (isNaN(d.getTime())) { return null; }
+        var jsDay = d.getDay();            // 0 = Chủ Nhật ... 6 = Thứ Bảy
+        return jsDay === 0 ? null : jsDay + 1;   // -> 2..7
+    }
+
+    function syncSlotOptions() {
+        var day = scheduleDayOf(dateInput.value);
+        var clearedSelection = false;
+        Array.prototype.forEach.call(slotSelect.options, function (opt) {
+            var dayOnly = opt.getAttribute('data-day-only');
+            if (!dayOnly) { return; }
+            var visible = (day !== null && String(day) === dayOnly);
+            opt.hidden = !visible;
+            opt.disabled = !visible;
+            opt.style.display = visible ? '' : 'none';
+            if (!visible && opt.selected) { clearedSelection = true; }
+        });
+        if (clearedSelection) { slotSelect.value = ''; }
+    }
+
+    dateInput.addEventListener('change', syncSlotOptions);
+    dateInput.addEventListener('input', syncSlotOptions);
+    syncSlotOptions();
+})();
+</script>
 {% endblock %}

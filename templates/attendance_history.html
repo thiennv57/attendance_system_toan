@@ -20,6 +20,7 @@
                     <label for="slot" class="form-label">Ca học:</label>
                     <select id="slot" name="time_slot" class="form-select">
                         <option value="all" {% if time_slot == 'all' or not time_slot %}selected{% endif %}>Tất cả ca học</option>
+                        <option value="Ca chiều: 14h30 - 16h" {% if time_slot == 'Ca chiều: 14h30 - 16h' %}selected{% endif %}>Ca chiều: 14h30 - 16h</option>
                         <option value="Ca 1: 18h -19h30" {% if time_slot == 'Ca 1: 18h -19h30' %}selected{% endif %}>Ca 1: 18h -19h30</option>
                         <option value="Ca 2: 19h30 - 21h" {% if time_slot == 'Ca 2: 19h30 - 21h' %}selected{% endif %}>Ca 2: 19h30 - 21h</option>
                     </select>

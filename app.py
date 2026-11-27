@@ -31,7 +31,48 @@ from utils import import_excel_data, get_students_for_slot, remove_diacritics
 
 TIME_SLOT_1 = 'Ca 1: 18h -19h30'
 TIME_SLOT_2 = 'Ca 2: 19h30 - 21h'
+TIME_SLOT_SAT_AFTERNOON = 'Ca chiều: 14h30 - 16h'
 DOUBLE_SLOT_VALUE = '__double_slot__'
+
+# Schedule.day_of_week: 2 = Thứ Hai ... 7 = Thứ Bảy
+SATURDAY_DAY_OF_WEEK = 7
+ISO_DAY_TO_SCHEDULE_DAY = {1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: None}
+
+# Thứ tự ca theo giờ bắt đầu trong ngày
+ALL_TIME_SLOTS = [TIME_SLOT_SAT_AFTERNOON, TIME_SLOT_1, TIME_SLOT_2]
+# Ca chỉ mở cho một số ngày nhất định trong tuần
+DAY_ONLY_TIME_SLOTS = {TIME_SLOT_SAT_AFTERNOON: {SATURDAY_DAY_OF_WEEK}}
+
+
+def get_time_slots_for_day(day_of_week):
+    """Danh sách ca học mở cho một ngày trong tuần (2..7)."""
+    slots = []
+    for slot in ALL_TIME_SLOTS:
+        allowed_days = DAY_ONLY_TIME_SLOTS.get(slot)
+        if allowed_days is None or day_of_week in allowed_days:
+            slots.append(slot)
+    return slots
+
+
+def get_time_slots_for_date(target_date):
+    """Danh sách ca học mở cho một ngày cụ thể."""
+    if target_date is None:
+        return get_time_slots_for_day(None)
+    return get_time_slots_for_day(ISO_DAY_TO_SCHEDULE_DAY.get(target_date.isoweekday()))
+
+
+def build_slot_options():
+    """Tất cả ca học kèm ngày áp dụng, dùng dựng dropdown chọn ca.
+
+    day_only = số thứ trong tuần (2..7) nếu ca chỉ mở đúng một ngày, ngược lại None.
+    Template dùng giá trị này để ẩn/hiện option theo ngày đang chọn.
+    """
+    options = []
+    for slot in ALL_TIME_SLOTS:
+        allowed_days = DAY_ONLY_TIME_SLOTS.get(slot)
+        day_only = sorted(allowed_days)[0] if allowed_days and len(allowed_days) == 1 else None
+        options.append({'value': slot, 'label': slot, 'day_only': day_only})
+    return options
 ATTENDANCE_COMMENT_SUPPORTED = hasattr(Attendance, 'comment')
 DEFAULT_TEST_ATTEMPT_COUNT = 10
 TEST_SCORE_PATTERN = re.compile(r'^(?:10(?:\.0+)?|[0-9](?:\.\d+)?)$')
@@ -58,12 +99,22 @@ def redirect_back(default_endpoint, **values):
     return redirect(url_for(default_endpoint, **values))
 
 
-def expand_schedule_value(schedule_value):
+def expand_schedule_value(schedule_value, day_of_week=None):
+    """Chuyển giá trị chọn trên form thành danh sách ca học.
+
+    Nếu truyền day_of_week, ca không mở cho ngày đó sẽ bị loại bỏ
+    (ví dụ: ca chiều chỉ hợp lệ vào Thứ Bảy).
+    """
     if not schedule_value:
         return []
     if schedule_value == DOUBLE_SLOT_VALUE:
-        return [TIME_SLOT_1, TIME_SLOT_2]
-    return [schedule_value]
+        slots = [TIME_SLOT_1, TIME_SLOT_2]
+    else:
+        slots = [schedule_value]
+    if day_of_week is not None:
+        allowed = set(get_time_slots_for_day(day_of_week))
+        slots = [slot for slot in slots if slot in allowed]
+    return slots
 
 
 def build_student_slots_map(student_ids, day_of_week):
@@ -76,7 +127,7 @@ def build_student_slots_map(student_ids, day_of_week):
     ).all()
 
     student_slots_map = {}
-    slot_order = [TIME_SLOT_1, TIME_SLOT_2]
+    slot_order = ALL_TIME_SLOTS
 
     for schedule in schedules:
         student_slots_map.setdefault(schedule.student_id, []).append(schedule.time_slot)
@@ -310,15 +361,23 @@ class Pagination:
                 last = num
 
 TEACHER_ATTENDANCE_SLOTS = [
+    ('ca_chieu', TIME_SLOT_SAT_AFTERNOON),
     ('ca1', TIME_SLOT_1),
     ('ca2', TIME_SLOT_2),
 ]
 TEACHER_SLOT_LABELS = {key: label for key, label in TEACHER_ATTENDANCE_SLOTS}
 TEACHER_SLOT_SHORT_NAMES = {
+    TIME_SLOT_SAT_AFTERNOON: 'Ca chiều',
     TIME_SLOT_1: 'Ca 1',
     TIME_SLOT_2: 'Ca 2',
 }
 TEACHER_SLOT_ORDER = {label: i for i, (_, label) in enumerate(TEACHER_ATTENDANCE_SLOTS)}
+
+
+def get_teacher_attendance_slots(target_date):
+    """Các ca điểm danh giáo viên mở trong một ngày cụ thể."""
+    allowed = set(get_time_slots_for_date(target_date))
+    return [(key, label) for key, label in TEACHER_ATTENDANCE_SLOTS if label in allowed]
 
 
 def _sort_users_by_label(users):
@@ -364,7 +423,7 @@ def build_teacher_slot_rows(target_date):
     teachers = get_attendance_teachers()
 
     groups = []
-    for slot_key, slot_label in TEACHER_ATTENDANCE_SLOTS:
+    for slot_key, slot_label in get_teacher_attendance_slots(target_date):
         groups.append({
             'key': slot_key,
             'label': slot_label,
@@ -400,7 +459,7 @@ def save_teacher_attendance(target_date, present_by_slot, late_ids, actor_id):
     now = datetime.utcnow()
     changed = 0
 
-    for slot_key, slot_label in TEACHER_ATTENDANCE_SLOTS:
+    for slot_key, slot_label in get_teacher_attendance_slots(target_date):
         present_ids = present_by_slot.get(slot_key, set())
         slot_has_data = bool(present_ids)
 
@@ -930,7 +989,7 @@ def save_teacher_attendance_route():
 
     present_by_slot = {
         slot_key: to_int_set(request.form.getlist(f'present_{slot_key}'))
-        for slot_key, _ in TEACHER_ATTENDANCE_SLOTS
+        for slot_key, _ in get_teacher_attendance_slots(target_date)
     }
     late_ids = to_int_set(request.form.getlist('late_teacher_ids'))
 
@@ -1006,7 +1065,7 @@ def students():
     grades = [g[0] for g in grades if g[0]]
 
     # Define available time slots (same as in student_form.html)
-    time_slots = ['Ca 1: 18h -19h30', 'Ca 2: 19h30 - 21h']
+    time_slots = list(ALL_TIME_SLOTS)
 
     # Define available days of week for filter dropdown
     days_of_week = {2: 'Thứ 2', 3: 'Thứ 3', 4: 'Thứ 4', 5: 'Thứ 5', 6: 'Thứ 6', 7: 'Thứ 7'}
@@ -1465,7 +1524,7 @@ def add_student():
         days_of_week = {2: 'Monday', 3: 'Tuesday', 4: 'Wednesday', 5: 'Thursday', 6: 'Friday', 7: 'Saturday'}
         for day_num in days_of_week.keys():
             schedule_value = request.form.get(f'day_{day_num}')
-            for time_slot in expand_schedule_value(schedule_value):
+            for time_slot in expand_schedule_value(schedule_value, day_num):
                 new_schedule = Schedule(
                     student_id=new_student.id,
                     day_of_week=day_num,
@@ -1602,7 +1661,7 @@ def edit_student(student_id):
             days_of_week = {2: 'Monday', 3: 'Tuesday', 4: 'Wednesday', 5: 'Thursday', 6: 'Friday', 7: 'Saturday'}
             for day_num in days_of_week.keys():
                 schedule_value = request.form.get(f'day_{day_num}')
-                for time_slot in expand_schedule_value(schedule_value):
+                for time_slot in expand_schedule_value(schedule_value, day_num):
                     new_schedule = Schedule(
                         student_id=student.id,
                         day_of_week=day_num,
@@ -1665,6 +1724,13 @@ def take_attendance():
     attendance_date = datetime.strptime(selected_date, '%Y-%m-%d').date() # Initialize attendance_date for GET requests
     selected_slot = request.args.get('slot', '')
     time_slot = selected_slot # Initialize time_slot for GET requests
+    # Ca chỉ mở cho một số ngày trong tuần (vd. ca chiều chỉ có Thứ Bảy)
+    slot_options = build_slot_options()
+    available_slots = get_time_slots_for_date(attendance_date)
+    if selected_slot and selected_slot not in available_slots:
+        flash(f'Ca "{selected_slot}" không mở vào ngày {attendance_date.strftime("%d/%m/%Y")}.', 'warning')
+        selected_slot = ''
+        time_slot = ''
     recorded_by_filter = request.args.get('recorded_by_filter', '')
     available_users = get_teacher_users()
     # selected_grade = request.args.get('grade', '') # Removed grade filter
@@ -1700,6 +1766,10 @@ def take_attendance():
         except ValueError:
             flash('Invalid date format.', 'error')
             return redirect_back('take_attendance')
+
+        if time_slot not in get_time_slots_for_date(attendance_date):
+            flash(f'Ca "{time_slot}" không mở vào ngày {attendance_date.strftime("%d/%m/%Y")}, không thể lưu điểm danh.', 'danger')
+            return redirect_back('take_attendance', date=date_str)
 
         # Re-determine students for the selected date and time slot
         attendance_date_obj = attendance_date
@@ -1944,6 +2014,7 @@ def take_attendance():
     return render_template('take_attendance.html',
                          date=selected_date,
                          selected_slot=selected_slot,
+                         slot_options=slot_options,
                          students=students_to_display,
                          search_results=search_results,
                          existing_attendance=existing_attendance_map,
@@ -2139,6 +2210,7 @@ def add_unscheduled_student_to_attendance():
         return render_template('attendance.html',
                                date=date_str,
                                selected_slot=time_slot,
+                               slot_options=build_slot_options(),
                                # selected_grade=grade_filter, # Removed grade filter
                                students=[], # Explicitly pass empty list for students
                                search_results=search_results,
